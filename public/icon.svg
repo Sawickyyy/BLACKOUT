@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="96" fill="#060907"/>
+  <rect x="48" y="48" width="416" height="416" rx="64" fill="none" stroke="#36f38a" stroke-width="8" opacity="0.5"/>
+  <text x="64" y="300" font-family="monospace" font-size="150" font-weight="700" fill="#36f38a">&gt;_</text>
+  <rect x="300" y="250" width="110" height="26" fill="#36f38a"/>
+  <text x="64" y="400" font-family="monospace" font-size="54" font-weight="700" fill="#cbf0d5" letter-spacing="6">BLACKNET</text>
+</svg>

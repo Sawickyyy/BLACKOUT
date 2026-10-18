@@ -1,0 +1,193 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Theme tokens ──────────────────────────────────────────────────────────
+   Colours are "R G B" triples consumed via rgb(var(--x) / alpha) in Tailwind.
+   Green is the default; amber and blue swap the accent + foreground tints. */
+:root {
+  --bg: 6 9 7;
+  --panel: 12 17 13;
+  --panel2: 17 24 19;
+  --line: 30 54 40;
+  --accent: 54 243 138;
+  --accent2: 60 200 255;
+  --fg: 203 240 213;
+  --muted: 110 140 120;
+  --danger: 255 86 96;
+  --warn: 255 190 70;
+  --ok: 90 230 150;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+:root[data-theme="amber"] {
+  --bg: 10 8 5;
+  --panel: 18 14 9;
+  --panel2: 24 19 12;
+  --line: 60 44 20;
+  --accent: 255 176 0;
+  --accent2: 255 120 40;
+  --fg: 240 220 180;
+  --muted: 150 130 90;
+}
+
+:root[data-theme="blue"] {
+  --bg: 5 8 12;
+  --panel: 11 15 22;
+  --panel2: 15 21 30;
+  --line: 28 44 66;
+  --accent: 86 170 255;
+  --accent2: 120 230 255;
+  --fg: 200 220 245;
+  --muted: 110 130 160;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: rgb(var(--bg));
+  color: rgb(var(--fg));
+  font-family: var(--font-mono);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior: none;
+}
+
+body {
+  /* Fill the visual viewport on iOS, below the notch. */
+  min-height: 100dvh;
+}
+
+/* CRT scanline + vignette overlay, toggled by the `crt` class on <html>. */
+:root.crt body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.18) 3px,
+    rgba(0, 0, 0, 0) 4px
+  );
+  mix-blend-mode: multiply;
+}
+
+:root.crt body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.45) 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-flicker,
+  .animate-scan {
+    animation: none !important;
+  }
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgb(var(--panel));
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--line));
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--accent) / 0.5);
+}
+
+/* Utility: subtle panel surface */
+.surface {
+  background: rgb(var(--panel));
+  border: 1px solid rgb(var(--line));
+}
+.surface-2 {
+  background: rgb(var(--panel2));
+  border: 1px solid rgb(var(--line));
+}
+
+.glow-text {
+  text-shadow: 0 0 6px rgb(var(--accent) / 0.6);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid rgb(var(--line));
+  background: rgb(var(--panel2));
+  color: rgb(var(--fg));
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.12s ease;
+  min-height: 38px;
+}
+.btn:hover {
+  border-color: rgb(var(--accent) / 0.7);
+  color: rgb(var(--accent));
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn-primary {
+  background: rgb(var(--accent) / 0.14);
+  border-color: rgb(var(--accent) / 0.6);
+  color: rgb(var(--accent));
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.input {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: rgb(var(--bg));
+  border: 1px solid rgb(var(--line));
+  color: rgb(var(--fg));
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+.input:focus {
+  outline: none;
+  border-color: rgb(var(--accent) / 0.8);
+  box-shadow: 0 0 0 1px rgb(var(--accent) / 0.4);
+}
+
+/* xterm fills its container */
+.xterm {
+  height: 100%;
+  padding: 8px;
+}
+.xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+
+/* Safe-area helpers for iOS */
+.safe-b {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-t {
+  padding-top: env(safe-area-inset-top);
+}
