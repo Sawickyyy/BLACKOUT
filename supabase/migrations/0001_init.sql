@@ -1,6 +1,6 @@
 -- BLACKNET — schemat bazy danych (PostgreSQL / Supabase)
 -- Wszystkie dane gracza są izolowane przez Row Level Security: gracz widzi
--- i zmienia wyłącznie własne wiersze (auth.uid() = user_id). Hasła są
+-- i zmienia wyłącznie własne wiersze ((select auth.uid()) = user_id). Hasła są
 -- obsługiwane przez Supabase Auth (bcrypt) — nigdy nie trzymamy ich tutaj.
 
 -- ──────────────────────────────────────────────────────────────────────────
@@ -40,7 +40,6 @@ create table if not exists public.saves (
   unique (user_id, slot)
 );
 
-create index if not exists saves_user_idx on public.saves(user_id);
 create index if not exists saves_updated_idx on public.saves(user_id, updated_at desc);
 
 comment on table public.saves is 'Sloty zapisu; pełny SaveGame w data (JSONB). revision = optimistic lock.';
@@ -61,7 +60,7 @@ create index if not exists game_events_user_idx on public.game_events(user_id, c
 -- Trigger: utrzymywanie updated_at
 -- ──────────────────────────────────────────────────────────────────────────
 create or replace function public.touch_updated_at()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql set search_path = public as $$
 begin
   new.updated_at := now();
   return new;
@@ -92,6 +91,8 @@ begin
   on conflict (id) do nothing;
   return new;
 end; $$;
+-- Wywoływana tylko przez wyzwalacz — nie wystawiamy jej przez API.
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
@@ -112,25 +113,25 @@ create policy profiles_select on public.profiles
 
 drop policy if exists profiles_update_own on public.profiles;
 create policy profiles_update_own on public.profiles
-  for update using (auth.uid() = id) with check (auth.uid() = id);
+  for update using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
 
 drop policy if exists profiles_insert_own on public.profiles;
 create policy profiles_insert_own on public.profiles
-  for insert with check (auth.uid() = id);
+  for insert with check ((select auth.uid()) = id);
 
 -- Zapisy: pełna izolacja — tylko właściciel.
 drop policy if exists saves_all_own on public.saves;
 create policy saves_all_own on public.saves
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  for all using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
 
 -- Zdarzenia: właściciel może czytać i dopisywać.
 drop policy if exists events_select_own on public.game_events;
 create policy events_select_own on public.game_events
-  for select using (auth.uid() = user_id);
+  for select using ((select auth.uid()) = user_id);
 
 drop policy if exists events_insert_own on public.game_events;
 create policy events_insert_own on public.game_events
-  for insert with check (auth.uid() = user_id);
+  for insert with check ((select auth.uid()) = user_id);
 
 -- ──────────────────────────────────────────────────────────────────────────
 -- RPC: atomowy zapis slotu z kontrolą rewizji (ochrona przed nadpisaniem)
@@ -163,3 +164,7 @@ begin
   end if;
   return v_row;
 end; $$;
+
+-- Zapis tylko dla zalogowanych; anon nie może wywołać RPC.
+revoke execute on function public.save_game(int, text, jsonb, text, bigint) from public, anon;
+grant execute on function public.save_game(int, text, jsonb, text, bigint) to authenticated;
