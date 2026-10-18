@@ -58,7 +58,9 @@ function buildIntrospection(registry: CommandRegistry): CommandSpec[] {
           return !spec.requires || ctx.hasCapability(spec.requires);
         })
         .sort();
-      const cols = 6;
+      // Fit the column grid to the terminal width (COLUMNS is set by the UI).
+      const width = parseInt(ctx.session.env.COLUMNS ?? "80", 10) || 80;
+      const cols = Math.max(2, Math.min(6, Math.floor(width / 12)));
       const rows: string[] = [];
       for (let i = 0; i < names.length; i += cols) {
         rows.push(names.slice(i, i + cols).map((n) => n.padEnd(12)).join(""));

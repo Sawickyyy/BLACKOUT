@@ -22,17 +22,20 @@ const missions: CommandSpec = {
   usage: "missions",
   run: (ctx) => {
     const lines = ["ZLECENIA BLACKNET", "═════════════════"];
+    // Narrow terminals (phones) get a compact layout that doesn't wrap.
+    const narrow = (parseInt(ctx.session.env.COLUMNS ?? "80", 10) || 80) < 60;
     MISSIONS.forEach((m, i) => {
       const st = ctx.player.missions[m.id]?.status ?? (m.prereq?.length ? "locked" : "available");
+      const num = `${String(i + 1).padStart(2)}.`;
       if (st === "locked") {
-        lines.push(`${String(i + 1).padStart(2)}. ${"█".repeat(6)} ${STATUS_LABEL[st]}`);
+        lines.push(`${num} ${"█".repeat(6)} ${STATUS_LABEL[st]}`);
+      } else if (narrow) {
+        lines.push(`${num} ${m.title}`, `    ${STATUS_LABEL[st]} ${"★".repeat(m.difficulty)}`);
       } else {
-        lines.push(
-          `${String(i + 1).padStart(2)}. ${m.title.padEnd(28)} ${STATUS_LABEL[st]}  [trud. ${m.difficulty}]`,
-        );
+        lines.push(`${num} ${m.title.padEnd(28)} ${STATUS_LABEL[st]}  [trud. ${m.difficulty}]`);
       }
     });
-    lines.push("", "Szczegóły: `mission <numer>`  (np. mission 2)");
+    lines.push("", narrow ? "Szczegóły: mission <nr>" : "Szczegóły: `mission <numer>`  (np. mission 2)");
     return ok(lines.join("\n") + "\n");
   },
 };

@@ -178,3 +178,19 @@ describe("privilege escalation", () => {
     expect(r.stdout).toContain("BLACKNET{");
   });
 });
+
+describe("terminal width ($COLUMNS)", () => {
+  it("help and missions fit a narrow phone terminal", () => {
+    const g = engine();
+    g.run("export COLUMNS=38");
+    const longest = (s: string) => Math.max(...s.split("\n").map((l) => l.length));
+    expect(longest(g.run("help").stdout.split("\n\n")[1]!)).toBeLessThanOrEqual(38);
+    expect(longest(g.run("missions").stdout)).toBeLessThanOrEqual(38);
+  });
+
+  it("defaults to a wide layout without COLUMNS", () => {
+    const g = engine();
+    const grid = g.run("help").stdout.split("\n\n")[1]!;
+    expect(grid.split("\n")[0]!.trim().split(/\s+/).length).toBe(6);
+  });
+});

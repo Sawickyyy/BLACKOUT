@@ -53,6 +53,17 @@ export default function Terminal() {
 
     const normalize = (s: string) => s.replace(/\n/g, "\r\n");
 
+    // Fit to the container and expose the width to the shell as $COLUMNS,
+    // like a real terminal, so commands can lay out output for phones.
+    const refit = () => {
+      try {
+        fit?.fit();
+      } catch {
+        /* layout not ready */
+      }
+      if (term) engine.player.session.env.COLUMNS = String(term.cols);
+    };
+
     const writePrompt = () => {
       prompt = engine.prompt();
       term!.write("\x1b[1m\x1b[38;5;120m" + prompt + "\x1b[0m");
@@ -224,11 +235,7 @@ export default function Terminal() {
       fit = new fitMod.FitAddon();
       term.loadAddon(fit);
       term.open(containerRef.current!);
-      try {
-        fit.fit();
-      } catch {
-        /* layout not ready */
-      }
+      refit();
       term.writeln("\x1b[1m\x1b[38;5;120m██ BLACKNET ██\x1b[0m  terminal operatora");
       term.writeln("Wpisz \x1b[1mhelp\x1b[0m aby zobaczyć polecenia, \x1b[1mmissions\x1b[0m aby zacząć.");
       term.writeln("");
@@ -238,23 +245,11 @@ export default function Terminal() {
 
       cleanupBridge = registerTerminal({ onInput: onData, focus: () => term?.focus() });
 
-      ro = new ResizeObserver(() => {
-        try {
-          fit?.fit();
-        } catch {
-          /* ignore */
-        }
-      });
+      ro = new ResizeObserver(refit);
       ro.observe(containerRef.current!);
     })();
 
-    const onViewport = () => {
-      try {
-        fit?.fit();
-      } catch {
-        /* ignore */
-      }
-    };
+    const onViewport = refit;
     window.visualViewport?.addEventListener("resize", onViewport);
 
     return () => {
