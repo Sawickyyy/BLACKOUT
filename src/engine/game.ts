@@ -170,6 +170,7 @@ export class GameEngine {
     this.accObjectives = [];
     this.accAlerted = false;
 
+    this.applyWifiLinkFilter();
     const ctx = this.buildContext();
     const outcome = runLine(line, this.registry, ctx, this.lastExit);
     this.lastExit = outcome.code;
@@ -237,6 +238,37 @@ export class GameEngine {
       this.consecutiveErrors = 0;
     }
     return tips;
+  }
+
+  /**
+   * Gate home-LAN devices behind their Wi-Fi network: a host that belongs to
+   * some access point's LAN is only reachable while the player is joined to
+   * that network. Recomputed each run from player + world state.
+   */
+  private applyWifiLinkFilter(): void {
+    const nets = this.world.wifi ?? [];
+    if (nets.length === 0) {
+      this.net.setLinkFilter(() => true);
+      return;
+    }
+    // A LAN host may sit behind more than one SSID (a 2.4 and a 5 GHz radio),
+    // so map each host to the SET of networks that reach it.
+    const ownersOf = new Map<string, Set<string>>();
+    for (const n of nets) {
+      for (const id of n.lanHostIds ?? []) {
+        (ownersOf.get(id) ?? ownersOf.set(id, new Set()).get(id)!).add(n.ssid);
+      }
+    }
+    const connected = this.player.wifiConnected;
+    this.net.setLinkFilter((host) => {
+      const owners = ownersOf.get(host.id);
+      return owners === undefined || (connected !== undefined && owners.has(connected));
+    });
+  }
+
+  /** The simulated access points in range (read-only view for the Wi-Fi app). */
+  wifiNetworks() {
+    return this.world.wifi ?? [];
   }
 
   /** Reveal the next paid hint for a mission (delegates to the shared logic). */

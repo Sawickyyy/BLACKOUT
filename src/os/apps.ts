@@ -11,6 +11,7 @@ import {
   SquareTerminal,
   Video,
   Wallet,
+  Wifi,
   type LucideIcon,
 } from "lucide-react";
 
@@ -21,6 +22,7 @@ export type AppId =
   | "files"
   | "browser"
   | "cctv"
+  | "wifi"
   | "editor"
   | "wallet"
   | "settings";
@@ -99,6 +101,16 @@ export const APPS: Record<AppId, AppMeta> = {
     size: { w: 900, h: 600 },
     min: { w: 420, h: 340 },
   },
+  wifi: {
+    id: "wifi",
+    title: "Wi-Fi Lab",
+    short: "Wi-Fi",
+    description: "Autoryzowana ocena sieci bezprzewodowych",
+    icon: Wifi,
+    tint: "120 220 180",
+    size: { w: 820, h: 580 },
+    min: { w: 420, h: 340 },
+  },
   editor: {
     id: "editor",
     title: "Edytor",
@@ -139,6 +151,7 @@ export const APP_IDS: AppId[] = [
   "editor",
   "browser",
   "cctv",
+  "wifi",
   "wallet",
   "settings",
 ];

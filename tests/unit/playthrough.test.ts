@@ -114,7 +114,17 @@ describe("full playthrough", () => {
     run("echo 02:11 > vertex_czas.txt");
     run("echo VX-7731 > vertex_kod.txt");
 
-    const ids = Array.from({ length: 22 }, (_, i) => `m${String(i + 1).padStart(2, "0")}`);
+    // M23 — authorized Wi-Fi assessment of the Kowalski home network.
+    run("curl http://dom.kowalski.example/zlecenie.txt");
+    run("wifi mon on");
+    run("wifi scan");
+    run("wifi analyze Kowalski_2.4");
+    run("wifi connect Kowalski_2.4 Kowalski2015");
+    run("ssh admin@192.168.1.1 --password admin");
+    run("exit");
+    run("echo 'Slabe haslo WPA2 Kowalski_2.4: Kowalski2015. Zalecenie: WPA3 + dluga fraza.' > wifi_audyt.txt");
+
+    const ids = Array.from({ length: 23 }, (_, i) => `m${String(i + 1).padStart(2, "0")}`);
     const incomplete = ids.filter((id) => g.player.missions[id]?.status !== "completed");
     expect(incomplete).toEqual([]);
   });

@@ -113,6 +113,25 @@ test.describe("BLACKNET OS — gameplay", () => {
     await expect(win.getByText("README.txt")).toBeVisible({ timeout: 8000 });
   });
 
+  test("Wi-Fi Lab: scan, strength meter, and joining the weak network", async ({ page }) => {
+    await startGame(page, "e2e_wifi");
+    await page.locator('[data-dock="wifi"]').click();
+    const win = page.locator('[data-window="wifi"]');
+
+    await win.getByRole("button", { name: /Włącz monitor/ }).click();
+    await win.getByText("Kowalski_2.4").first().click();
+    // The security explainer is shown for the selected network.
+    await expect(win).toContainText(/WPA2-Personal/);
+
+    // The strength meter rates the deduced passphrase as weak.
+    await win.getByPlaceholder("wpisz kandydata na hasło").fill("Kowalski2015");
+    await expect(win.getByText(/słabe|trywialne/).first()).toBeVisible();
+
+    // Joining the authorized weak network reveals the home-LAN devices.
+    await win.getByRole("button", { name: /Połącz z Kowalski_2\.4/ }).click();
+    await expect(win.getByText("router.dom.lan")).toBeVisible({ timeout: 8000 });
+  });
+
   test("CCTV: no feeds until an NVR is taken over, then live view renders", async ({ page }) => {
     await startGame(page, "e2e_cctv");
 

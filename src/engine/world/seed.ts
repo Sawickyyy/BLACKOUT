@@ -594,6 +594,187 @@ function vertexNvr(): Host {
   });
 }
 
+// ── Wireless lab (authorized home-network assessment) ───────────────────────
+// A fictional client (the Kowalski household) hired the operator to assess
+// their home Wi-Fi and write a hardening report. Everything is simulated: the
+// weak network's passphrase is DEDUCIBLE from OSINT clues (surname + "since
+// 2015"), the WPA3 network resists offline guessing by design, and each device
+// behind the router keeps its own separate login.
+function clientKowalski(): Host {
+  return linuxHost({
+    id: "kowalski-web",
+    hostname: "dom.kowalski.example",
+    ip: "203.0.113.150",
+    cidr: "203.0.113.0/24",
+    gateway: "203.0.113.1",
+    org: "kowalski",
+    idsSensitivity: 0.1,
+    users: [user("root", 0, { password: "kowalski-web-root" })],
+    services: [
+      svc(80, "http", "nginx/1.24.0", {
+        product: "nginx",
+        version: "1.24.0",
+        www: {
+          "/":
+            "<html><head><title>Rodzina Kowalskich</title></head><body><h1>Nasz dom</h1>" +
+            "<p>Cześć! Jesteśmy w tym domu od 2015 roku. Zdjęcia z ogrodu w galerii.</p>" +
+            "<!-- zlecenie: autoryzacja oceny sieci w /zlecenie.txt --></body></html>",
+          "/zlecenie.txt":
+            "AUTORYZACJA OCENY BEZPIECZEŃSTWA (fikcyjna, na potrzeby laboratorium)\n" +
+            "Zleceniodawca: Rodzina Kowalskich\n" +
+            "Zakres: wyłącznie sieci Wi-Fi SSID „Kowalski_2.4” i „Kowalski_5G” oraz\n" +
+            "urządzenia w domowej sieci LAN 192.168.1.0/24.\n" +
+            "Cel: ocenić siłę zabezpieczeń, udokumentować słabości i zaproponować\n" +
+            "bezpieczniejszą konfigurację. Nie testować sieci sąsiadów.\n",
+          "/galeria":
+            "<html><body><h1>Galeria</h1><p>Zdjęcie: router w przedpokoju. " +
+            "Na naklejce widać dane panelu: login admin, hasło admin (fabryczne).</p></body></html>",
+        },
+      }),
+    ],
+  });
+}
+
+function homeRouter(): Host {
+  return linuxHost({
+    id: "home-router",
+    hostname: "router.dom.lan",
+    ip: "192.168.1.1",
+    cidr: "192.168.1.0/24",
+    org: "kowalski",
+    os: "OpenWrt 23.05 (router domowy)",
+    idsSensitivity: 0.05,
+    users: [
+      user("root", 0, { password: "admin" }),
+      // Default, unchanged admin account — the way into the panel.
+      user("admin", 1000, { gid: 1000, password: "admin", home: "/home/admin" }),
+    ],
+    services: [
+      svc(22, "ssh", "Dropbear sshd", { product: "Dropbear", version: "2022.82", creds: [{ user: "admin", password: "admin" }] }),
+      svc(80, "http", "uhttpd", {
+        product: "uhttpd",
+        www: {
+          "/":
+            "<html><head><title>Router domowy — panel</title></head><body><h1>Panel routera</h1>" +
+            "<p>Konfiguracja Wi-Fi i sieci. Logowanie: konto admin.</p>" +
+            "<ul><li>Wi-Fi 2.4GHz: Kowalski_2.4 — WPA2-Personal</li>" +
+            "<li>Wi-Fi 5GHz: Kowalski_5G — WPA3-Personal</li></ul>" +
+            "<p>Bieżąca konfiguracja w /etc/router/config.json</p></body></html>",
+        },
+      }),
+    ],
+    files: {
+      etc: {
+        "sudoers.d": { admin: "admin ALL=(ALL) NOPASSWD: ALL\n" },
+        router: {
+          "config.json":
+            JSON.stringify(
+              {
+                wifi_24: { ssid: "Kowalski_2.4", security: "wpa2", passphrase: "Kowalski2015" },
+                wifi_5: { ssid: "Kowalski_5G", security: "wpa3", passphrase: "korale-wiatrak-77-lustro" },
+                admin_password: "admin",
+                remote_admin: true,
+              },
+              null,
+              2,
+            ) + "\n",
+        },
+      },
+    },
+  });
+}
+
+function homeTv(): Host {
+  return linuxHost({
+    id: "home-tv",
+    hostname: "tv.dom.lan",
+    ip: "192.168.1.20",
+    cidr: "192.168.1.0/24",
+    org: "kowalski",
+    os: "Android TV (SmartHub)",
+    idsSensitivity: 0.2,
+    users: [user("root", 0, { password: "tv-root-unknown" })],
+    services: [
+      svc(8001, "http", "SmartHub/2.1", {
+        product: "SmartHub",
+        www: {
+          "/": "<html><body><h1>SmartHub TV</h1><p>Parowanie wymaga 6-cyfrowego PIN wyświetlanego na ekranie telewizora.</p></body></html>",
+          "/api": "{\"error\":\"unauthorized\",\"hint\":\"wymagany PIN z pilota — brak zdalnego obejścia\"}",
+        },
+      }),
+    ],
+  });
+}
+
+function homeCam(): Host {
+  return linuxHost({
+    id: "home-cam",
+    hostname: "kamera.dom.lan",
+    ip: "192.168.1.30",
+    cidr: "192.168.1.0/24",
+    org: "kowalski",
+    os: "Linux (kamera IP)",
+    idsSensitivity: 0.15,
+    // Separate, device-specific login — joining the Wi-Fi is NOT access here.
+    users: [user("root", 0, { password: "cam-root-x" }), user("viewer", 1000, { gid: 1000, password: "domofon77", home: "/home/viewer" })],
+    services: [
+      svc(22, "ssh", "Dropbear sshd", { product: "Dropbear", version: "2022.82", creds: [{ user: "viewer", password: "domofon77" }] }),
+      svc(80, "http", "lighttpd", {
+        product: "lighttpd",
+        www: {
+          "/": "<html><body><h1>Kamera domowa</h1><p>Podgląd po zalogowaniu (konto viewer).</p><!-- domyślne hasło konta viewer bywa na naklejce: domofon77 --></body></html>",
+        },
+      }),
+    ],
+    cctv: {
+      label: "Kamera domowa",
+      requiresUser: "viewer",
+      feeds: [
+        {
+          id: "front",
+          name: "Wejście",
+          zone: "Drzwi frontowe",
+          scene: "corridor",
+          events: [{ at: 18 * 3600 + 40 * 60, duration: 3 * 60, label: "Kurier zostawia paczkę" }],
+        },
+      ],
+    },
+  });
+}
+
+function wifiNetworksSeed(): import("../types").WifiNetwork[] {
+  return [
+    {
+      ssid: "Kowalski_2.4",
+      bssid: "A4:2B:8C:11:07:D0",
+      band: "2.4",
+      channel: 6,
+      signal: -48,
+      security: "wpa2",
+      org: "kowalski",
+      authorized: true,
+      passphrase: "Kowalski2015",
+      clues: ["Kowalski", "2015"],
+      lanHostIds: ["home-router", "home-tv", "home-cam"],
+    },
+    {
+      ssid: "Kowalski_5G",
+      bssid: "A4:2B:8C:11:07:D1",
+      band: "5",
+      channel: 44,
+      signal: -52,
+      security: "wpa3",
+      org: "kowalski",
+      authorized: true,
+      passphrase: "korale-wiatrak-77-lustro",
+      lanHostIds: ["home-router", "home-tv", "home-cam"],
+    },
+    { ssid: "Sasiad-5G", bssid: "F0:9F:C2:3A:11:88", band: "5", channel: 36, signal: -74, security: "wpa2" },
+    { ssid: "FreeCafe", bssid: "DC:A6:32:00:4E:21", band: "2.4", channel: 1, signal: -80, security: "open" },
+    { ssid: "StaryRouter", bssid: "00:1D:7E:AA:BB:CC", band: "2.4", channel: 11, signal: -85, security: "wep" },
+  ];
+}
+
 // ── DNS + organizations ─────────────────────────────────────────────────────
 function dnsRecords(): DnsRecord[] {
   const a = (name: string, value: string): DnsRecord => ({ name, type: "A", value });
@@ -617,6 +798,10 @@ function dnsRecords(): DnsRecord[] {
     a("node.nullsec", "192.0.2.200"),
     a("nvr.vertex-sec.example", "198.51.100.70"),
     a("vertex-sec.example", "198.51.100.70"),
+    a("dom.kowalski.example", "203.0.113.150"),
+    a("router.dom.lan", "192.168.1.1"),
+    a("tv.dom.lan", "192.168.1.20"),
+    a("kamera.dom.lan", "192.168.1.30"),
     { name: "aurora.example", type: "MX", value: "mail.aurora.example" },
     { name: "aurora.example", type: "TXT", value: "blacknet-hint: zacznij od robots.txt" },
     { name: "www.aurora.example", type: "CNAME", value: "aurora.example" },
@@ -642,6 +827,7 @@ function organizations(): Record<string, Organization> {
     hollow: mk("hollow", "The Hollow", "underground", "Forum podziemia."),
     nullsec: mk("nullsec", "NullSec", "underground", "Wroga grupa hakerska."),
     vertex: mk("vertex", "Vertex Security", "tech", "Firma dozoru wizyjnego z niezmienionymi hasłami fabrycznymi."),
+    kowalski: mk("kowalski", "Rodzina Kowalskich", "tech", "Klient zlecający autoryzowaną ocenę domowej sieci Wi-Fi."),
     isp: mk("isp", "BLACKNET ISP", "isp", "Operator szkieletu sieci."),
   };
 }
@@ -675,6 +861,10 @@ export function buildWorld(): WorldState {
     theHollow(),
     nullsecNode(),
     vertexNvr(),
+    clientKowalski(),
+    homeRouter(),
+    homeTv(),
+    homeCam(),
   ];
   const map: Record<string, Host> = {};
   for (const h of hosts) map[h.id] = h;
@@ -682,6 +872,7 @@ export function buildWorld(): WorldState {
     hosts: map,
     dns: dnsRecords(),
     organizations: organizations(),
+    wifi: wifiNetworksSeed(),
     seed: 1337,
   };
 }

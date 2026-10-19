@@ -213,6 +213,10 @@ export interface PlayerState {
   tutorialSeen?: boolean;
   /** Camera feeds the player has actually opened, as "hostId:feedId" keys. */
   cctvViewed?: string[];
+  /** Whether the lab Wi-Fi adapter is in monitor mode (flavor/realism). */
+  wifiMonitor?: boolean;
+  /** SSID of the simulated network the player is currently joined to. */
+  wifiConnected?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -233,10 +237,42 @@ export interface GameSettings {
   fontSize: number;
 }
 
+/** Wi-Fi security scheme a simulated access point advertises. */
+export type WifiSecurity = "open" | "wep" | "wpa2" | "wpa3" | "wpa2-ent";
+
+/**
+ * A simulated wireless access point. Entirely fictional — there is no radio,
+ * no capture and no cracking; joining a weak network is a deduction puzzle
+ * (the passphrase is guessable from OSINT clues) and the lab tooling only
+ * SCORES passphrase strength to teach why weak ones fail. `passphrase` is a
+ * made-up lab value, never a real credential.
+ */
+export interface WifiNetwork {
+  ssid: string;
+  bssid: string;
+  band: "2.4" | "5";
+  channel: number;
+  /** Signal strength in dBm (e.g. -45 strong, -82 weak). */
+  signal: number;
+  security: WifiSecurity;
+  /** Owning organization id (for authorized-lab framing). */
+  org?: string;
+  /** Fictional passphrase for a lab network the player may deduce and join. */
+  passphrase?: string;
+  /** OSINT-style clues that make a weak passphrase guessable. */
+  clues?: string[];
+  /** Hosts reachable only while joined to this network (home-LAN devices). */
+  lanHostIds?: string[];
+  /** True for the single network the engagement authorizes assessing. */
+  authorized?: boolean;
+}
+
 export interface WorldState {
   hosts: Record<string, Host>;
   dns: DnsRecord[];
   organizations: Record<string, Organization>;
+  /** Simulated wireless access points in range of the lab adapter. */
+  wifi?: WifiNetwork[];
   /** Monotonic simulated clock offset, kept for deterministic tests. */
   seed: number;
 }

@@ -57,8 +57,20 @@ export function cidrContains(cidr: string, ip: string): boolean {
 export class Network {
   constructor(private world: WorldState) {}
 
+  /**
+   * Optional reachability gate. Hosts for which this returns false are treated
+   * as having no route — used so home-LAN devices behind a Wi-Fi access point
+   * are unreachable until the player has joined that network. Set per run by
+   * the engine from player state.
+   */
+  private linkFilter: (host: Host) => boolean = () => true;
+
+  setLinkFilter(fn: (host: Host) => boolean): void {
+    this.linkFilter = fn;
+  }
+
   get hosts(): Host[] {
-    return Object.values(this.world.hosts);
+    return Object.values(this.world.hosts).filter((h) => this.linkFilter(h));
   }
 
   dnsRecords(): DnsRecord[] {

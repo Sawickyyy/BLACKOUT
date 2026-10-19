@@ -36,6 +36,14 @@ export function migrateSave(save: SaveGame): SaveGame {
     if (!save.world.organizations[id]) save.world.organizations[id] = org;
   }
 
+  // 3b. Simulated Wi-Fi networks (added with the wireless lab).
+  if (!Array.isArray(save.world.wifi)) {
+    save.world.wifi = fresh.wifi ?? [];
+  } else {
+    const have = new Set(save.world.wifi.map((n) => n.ssid.toLowerCase()));
+    for (const n of fresh.wifi ?? []) if (!have.has(n.ssid.toLowerCase())) save.world.wifi.push(n);
+  }
+
   // 4. Player fields added after the player's save was created.
   if (!save.player.hintsUsed || typeof save.player.hintsUsed !== "object") {
     save.player.hintsUsed = {};

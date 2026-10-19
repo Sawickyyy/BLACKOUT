@@ -8,6 +8,7 @@ import { netCommands } from "./net";
 import { utilCommands } from "./util";
 import { secCommands } from "./sec";
 import { gameCommands } from "./game";
+import { wirelessCommands } from "./wireless";
 
 // Longer-form manual pages for the most important commands. Commands without
 // an entry fall back to a generated page from their summary + usage.
@@ -114,6 +115,7 @@ export function buildRegistry(): CommandRegistry {
     ...utilCommands,
     ...secCommands,
     ...gameCommands,
+    ...wirelessCommands,
   ];
   for (const cmd of all) registry.set(cmd.name, cmd);
   for (const cmd of buildIntrospection(registry)) registry.set(cmd.name, cmd);

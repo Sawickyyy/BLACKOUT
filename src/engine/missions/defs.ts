@@ -510,4 +510,49 @@ export const MISSIONS: Mission[] = [
       },
     ],
   },
+  {
+    id: "m23",
+    title: "Sygnał w eterze",
+    org: "kowalski",
+    difficulty: 3,
+    prereq: ["m02"],
+    brief:
+      "Rodzina Kowalskich zleca AUTORYZOWANĄ ocenę swojej domowej sieci Wi-Fi (laboratorium).\n" +
+      "Najpierw potwierdź zakres zlecenia, potem zeskanuj eter adapterem lab (wifi), przeanalizuj\n" +
+      "zabezpieczenia WPA2 vs WPA3 i oceń siłę hasła. Słabe hasło da się wydedukować z publicznych\n" +
+      "danych klienta — nie z żadnego ataku. Po wejściu do sieci pamiętaj: każde urządzenie ma\n" +
+      "OSOBNE zabezpieczenia. Na koniec udokumentuj słabość i zaproponuj bezpieczniejszą konfigurację.",
+    reward: { credits: 500, skills: { recon: 1, crypto: 1 }, reputation: [{ org: "kowalski", amount: 10 }] },
+    hints: [
+      "Zacznij od autoryzacji: `curl http://dom.kowalski.example/zlecenie.txt`. Zakres to tylko sieci Kowalski_* i LAN 192.168.1.0/24.",
+      "Włącz adapter i zeskanuj eter: `wifi mon on`, potem `wifi scan`. Porównaj WPA2 (Kowalski_2.4) i WPA3 (Kowalski_5G): `wifi analyze Kowalski_2.4`.",
+      "Strona klienta zdradza, że mieszkają tam „od 2015”, a nazwisko to Kowalski. Zbuduj kandydata i oceń: `wifi test Kowalski2015 Kowalski_2.4` — miernik pokaże, że to słabe hasło.",
+      "Połącz się: `wifi connect Kowalski_2.4 Kowalski2015`. WPA3 (Kowalski_5G) odrzuca zgadywanie offline — to właśnie zaleta, której brakuje sieci 2.4.",
+      "W LAN: `wifi devices`. Router ma fabryczne hasło panelu (naklejka: admin/admin): `ssh admin@192.168.1.1 --password admin`.",
+      "Raport: `echo 'Słabe haslo WPA2 Kowalski_2.4: Kowalski2015. Zalecenie: WPA3 + dluga losowa fraza, zmiana hasla panelu.' > wifi_audyt.txt` — musi zawierać Kowalski2015 i WPA3.",
+    ],
+    objectives: [
+      { id: "auth", label: "Potwierdź autoryzację zlecenia", check: httpObj("kowalski-web", "zlecenie") },
+      { id: "scan", label: "Zeskanuj sieci Wi-Fi (wifi scan)", check: (mc) => mc.ranCommand("wifi", "scan") },
+      { id: "analyze", label: "Przeanalizuj zabezpieczenia (wifi analyze)", check: (mc) => mc.ranCommand("wifi", "analyze") },
+      {
+        id: "connect",
+        label: "Połącz się z Kowalski_2.4 (słabe WPA2)",
+        check: (mc) => mc.player.wifiConnected === "Kowalski_2.4",
+      },
+      {
+        id: "device",
+        label: "Zaloguj się na router (osobne zabezpieczenie)",
+        check: (mc) => mc.hasAccess("home-router", "admin"),
+      },
+      {
+        id: "report",
+        label: "Udokumentuj słabość i rekomendację (wifi_audyt.txt)",
+        check: (mc) =>
+          mc.fileContains("local", "/home/operator/wifi_audyt.txt", "Kowalski2015") &&
+          (mc.fileContains("local", "/home/operator/wifi_audyt.txt", "WPA3") ||
+            mc.fileContains("local", "/home/operator/wifi_audyt.txt", "wpa3")),
+      },
+    ],
+  },
 ];
