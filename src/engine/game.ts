@@ -258,6 +258,64 @@ export class GameEngine {
     }
   }
 
+  // ── Read-only views for the OS apps (never mutate game state) ─────────────
+
+  /** Directory listing with the metadata the VFS really stores. */
+  fsListDetailed(path: string):
+    | {
+        ok: true;
+        path: string;
+        entries: { name: string; type: string; mode: number; owner: string; group: string; size: number; mtime: number }[];
+      }
+    | { ok: false; error: string } {
+    const host = this.currentHost();
+    const vfs = this.vfsFor(host);
+    const p = this.curPrincipal();
+    const abs = resolvePath(this.player.session.cwd, path);
+    try {
+      const names = vfs.readdir(abs, p);
+      const entries = names.map((name) => {
+        const child = abs === "/" ? "/" + name : abs + "/" + name;
+        const node = vfs.stat(child, p).node;
+        const size = node.type === "file" ? node.content.length : node.type === "symlink" ? node.target.length : 4096;
+        return {
+          name,
+          type: node.type,
+          mode: node.mode,
+          owner: host.users.find((u) => u.uid === node.uid)?.name ?? String(node.uid),
+          group: host.groups.find((g) => g.gid === node.gid)?.name ?? String(node.gid),
+          size,
+          mtime: node.mtime,
+        };
+      });
+      return { ok: true, path: abs, entries };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  }
+
+  /**
+   * Services the player has actually seen on a host: only if their terminal
+   * history contains an `nmap` or `nc` aimed at it. Mirrors what nmap printed
+   * (open ports from the default port list) — nothing the player hasn't seen.
+   */
+  observedServices(hostId: string): { port: number; proto: string; service?: string; version?: string }[] | null {
+    const host = this.world.hosts[hostId];
+    const local = this.world.hosts[this.player.localHostId];
+    if (!host || !local) return null;
+    const scanned = this.player.terminalHistory.some((line) => {
+      const parts = line.trim().split(/\s+/);
+      if (parts[0] !== "nmap" && parts[0] !== "nc") return false;
+      return parts.slice(1).some((t) => !t.startsWith("-") && this.net.target(t)?.id === hostId);
+    });
+    if (!scanned) return null;
+    const ports = [21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 993, 3306, 3389, 5432, 8080, 8443];
+    return this.net
+      .scan(local, host, ports)
+      .filter((r) => r.state === "open")
+      .map((r) => ({ port: r.port, proto: r.proto, service: r.service, version: r.version }));
+  }
+
   /** Serialize for persistence. */
   toSave(): SaveGame {
     return this.save;

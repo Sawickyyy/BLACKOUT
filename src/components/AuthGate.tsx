@@ -3,9 +3,12 @@
 import { useEffect, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { Loader2, LockKeyhole, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { prepareSession } from "@/lib/autosave/session";
 import { getBackupStore, useGame } from "@/store/gameStore";
-import GameShell from "./GameShell";
+import OSRoot from "@/os/OSRoot";
+import Logo from "@/os/shell/Logo";
+import { OSButton, OSInput } from "@/os/ui";
 
 type Mode = "login" | "register";
 
@@ -151,68 +154,81 @@ export default function AuthGate() {
     setMsg(error ? error.message : "Wysłaliśmy link do resetu hasła na podany adres.");
   }
 
-  if (ready) return <GameShell />;
+  if (ready) return <OSRoot />;
 
   if (checking) {
     return (
-      <div className="flex h-[100dvh] items-center justify-center bg-bg text-accent">
-        <span className="animate-flicker glow-text">ładowanie BLACKNET…</span>
+      <div className="os-wallpaper flex h-[100dvh] flex-col items-center justify-center gap-4 text-text2" style={{ height: "var(--app-h)" }}>
+        <Logo size={44} className="animate-os-pulse" />
+        <span className="flex items-center gap-2 text-sm">
+          <Loader2 size={15} className="animate-spin" /> Wczytywanie BLACKNET OS…
+        </span>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-bg p-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <h1 className="glow-text text-3xl font-bold text-accent">BLACKNET</h1>
-          <p className="mt-1 text-xs text-muted">symulator hakera • fikcyjny, odizolowany internet</p>
+    <div className="os-wallpaper relative flex min-h-[100dvh] items-center justify-center overflow-hidden p-5 safe-x" style={{ minHeight: "var(--app-h)" }}>
+      <div className="os-grid pointer-events-none absolute inset-0 animate-os-drift" aria-hidden />
+      <div className="relative w-full max-w-[400px] animate-os-in">
+        <div className="mb-7 flex flex-col items-center text-center">
+          <Logo size={56} className="drop-shadow-[0_0_28px_rgb(var(--accent)/0.4)]" />
+          <h1 className="mt-4 text-3xl font-bold tracking-[0.18em] text-fg">BLACKNET</h1>
+          <p className="os-label mt-1.5">System operacyjny operatora</p>
         </div>
 
-        <div className="surface rounded-lg p-5">
+        <div className="glass rounded-os-lg p-6 shadow-window">
           {cloud && (
-            <div className="mb-4 flex gap-2">
-              <button
-                className={`btn flex-1 py-1.5 ${mode === "login" ? "btn-primary" : ""}`}
-                onClick={() => setMode("login")}
-              >
-                Logowanie
-              </button>
-              <button
-                className={`btn flex-1 py-1.5 ${mode === "register" ? "btn-primary" : ""}`}
-                onClick={() => setMode("register")}
-              >
-                Rejestracja
-              </button>
+            <div role="tablist" aria-label="Tryb" className="mb-5 flex gap-1 rounded-xl border hairline bg-bg/40 p-1">
+              {(["login", "register"] as const).map((m) => (
+                <button
+                  key={m}
+                  role="tab"
+                  aria-selected={mode === m}
+                  onClick={() => {
+                    setMode(m);
+                    setMsg(null);
+                  }}
+                  className={`flex-1 rounded-lg py-2 text-xs font-medium transition-colors ${
+                    mode === m ? "bg-elevated text-fg shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]" : "text-text2 hover:text-fg"
+                  }`}
+                >
+                  {m === "login" ? "Logowanie" : "Rejestracja"}
+                </button>
+              ))}
             </div>
           )}
 
-          <form onSubmit={submit} className="space-y-3">
+          <form onSubmit={submit} className="space-y-3" noValidate>
             {(mode === "register" || !cloud) && (
-              <input
-                className="input"
-                placeholder="nazwa użytkownika"
+              <OSInput
+                label="Nazwa operatora"
+                leading={<UserRound size={15} />}
+                placeholder="np. ghost_01"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoCapitalize="none"
                 autoCorrect="off"
+                hint={!cloud ? "Zapisujesz lokalnie na tym urządzeniu" : undefined}
               />
             )}
             {cloud && (
               <>
-                <input
-                  className="input"
+                <OSInput
+                  label="E-mail"
                   type="email"
-                  placeholder="e-mail"
+                  leading={<Mail size={15} />}
+                  placeholder="operator@przyklad.pl"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   autoCapitalize="none"
                   required
                 />
-                <input
-                  className="input"
+                <OSInput
+                  label="Hasło"
                   type="password"
-                  placeholder="hasło"
+                  leading={<LockKeyhole size={15} />}
+                  placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   minLength={6}
@@ -221,34 +237,39 @@ export default function AuthGate() {
               </>
             )}
 
-            <button className="btn btn-primary w-full py-2" disabled={busy} type="submit">
-              {!cloud ? "Rozpocznij grę" : mode === "login" ? "Zaloguj się" : "Utwórz konto"}
-            </button>
+            <OSButton type="submit" variant="primary" size="lg" loading={busy} className="w-full">
+              {!cloud ? "Uruchom BLACKNET OS" : mode === "login" ? "Zaloguj się" : "Utwórz konto"}
+            </OSButton>
           </form>
 
           {cloud && mode === "login" && (
-            <button className="mt-2 w-full text-center text-[11px] text-muted hover:text-accent" onClick={resetPassword}>
-              Zapomniałeś hasła?
+            <button type="button" className="mt-2.5 w-full text-center text-2xs text-muted transition-colors hover:text-accent" onClick={resetPassword}>
+              Nie pamiętasz hasła?
             </button>
           )}
 
-          {msg && <p className="mt-3 text-center text-xs text-warn">{msg}</p>}
+          {msg && (
+            <p className="mt-3 rounded-lg border border-warn/25 bg-warn/[0.08] px-3 py-2 text-center text-xs text-warn" role="status">
+              {msg}
+            </p>
+          )}
 
           {cloud && (
             <>
-              <div className="my-4 flex items-center gap-2 text-[10px] text-muted">
-                <div className="h-px flex-1 bg-line" />
+              <div className="my-5 flex items-center gap-3 text-2xs text-muted">
+                <span className="h-px flex-1 bg-white/10" />
                 lub
-                <div className="h-px flex-1 bg-line" />
+                <span className="h-px flex-1 bg-white/10" />
               </div>
-              <button className="btn w-full py-1.5" onClick={() => void startLocal(username || "operator")}>
+              <OSButton variant="secondary" size="md" className="w-full" onClick={() => void startLocal(username || "operator")}>
                 Graj lokalnie (bez konta)
-              </button>
+              </OSButton>
             </>
           )}
         </div>
 
-        <p className="mt-4 text-center text-[10px] text-muted">
+        <p className="mx-auto mt-5 flex max-w-xs items-start justify-center gap-1.5 text-center text-2xs leading-relaxed text-muted">
+          <ShieldCheck size={13} className="mt-0.5 shrink-0" aria-hidden />
           Wszystkie systemy, sieci i organizacje w grze są fikcyjne. Żadne polecenie nie opuszcza symulacji.
         </p>
       </div>

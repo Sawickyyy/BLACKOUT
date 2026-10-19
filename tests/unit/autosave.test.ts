@@ -56,7 +56,7 @@ function play(save: SaveGame, ...lines: string[]): SaveGame {
 
 const M01 = ["cat README.txt", "whoami", "help", "touch pierwszy.txt"];
 
-function harness(opts: { cloud?: FakeCloud | null; initial?: Parameters<typeof SaveManager>[0]["initial"] } = {}) {
+function harness(opts: { cloud?: FakeCloud | null; initial?: ConstructorParameters<typeof SaveManager>[0]["initial"] } = {}) {
   const storage = new MemoryStorage();
   const journal = new Journal(storage, journalKey("u1", 0));
   const engine = { current: new GameEngine(newSaveGame("tester")) };
@@ -102,7 +102,11 @@ describe("progress + validation", () => {
 describe("reconcile (boot)", () => {
   const a = newSaveGame("a");
   const b = play(newSaveGame("a"), ...M01);
-  const side = (save: SaveGame, extra: object) => ({ save, checksum: sha256(JSON.stringify(save)), ...extra });
+  const side = (save: SaveGame, extra: { cloudRevision?: number; pendingCloud: boolean }) => ({
+    save,
+    checksum: sha256(JSON.stringify(save)),
+    ...extra,
+  });
 
   it("loads remote when the device has never synced", () => {
     expect(reconcile(null, { save: a, revision: 3 })).toEqual({ use: "remote", conflict: false });

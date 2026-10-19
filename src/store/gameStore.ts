@@ -22,6 +22,13 @@ export interface GameNote {
   id: string;
   kind: "mission" | "alert" | "info";
   text: string;
+  ts: number;
+}
+
+/** A mission completion to celebrate in the UI (reward animation). */
+export interface Celebration {
+  id: string;
+  missionId: string;
 }
 
 interface BootOptions {
@@ -46,6 +53,11 @@ interface GameState {
   /** Bumped whenever a backup is written, so lists can refresh. */
   backupsVersion: number;
   notes: GameNote[];
+  /** Every notification of this session, newest first (notification centre). */
+  noteHistory: GameNote[];
+  celebrations: Celebration[];
+  /** Exit code + time of the last command, for the terminal status bar. */
+  lastExit: { code: number; at: number } | null;
 
   boot: (opts: BootOptions) => void;
   run: (line: string) => RunResult | null;
@@ -62,6 +74,8 @@ interface GameState {
   clearAllSaves: () => Promise<void>;
   pushNote: (kind: GameNote["kind"], text: string) => void;
   dismissNote: (id: string) => void;
+  clearNoteHistory: () => void;
+  dismissCelebration: (id: string) => void;
   resetToNewGame: () => Promise<void>;
 }
 
@@ -97,6 +111,9 @@ export const useGame = create<GameState>((set, get) => {
     saveStatus: null,
     backupsVersion: 0,
     notes: [],
+    noteHistory: [],
+    celebrations: [],
+    lastExit: null,
 
     boot: ({ prepared, userKey, backend, username, email, slot = 0 }) => {
       manager?.dispose();
@@ -140,6 +157,7 @@ export const useGame = create<GameState>((set, get) => {
       for (const id of result.completedMissions) {
         get().pushNote("mission", `Ukończono zlecenie: ${id.toUpperCase()}`);
         void manager?.backup(`misja ${id.toUpperCase()} ukończona`);
+        set({ celebrations: [...get().celebrations, { id: `${id}_${Date.now()}`, missionId: id }] });
       }
       for (const id of result.newlyAvailable) {
         get().pushNote("info", `Nowe zlecenie dostępne: ${id.toUpperCase()}`);
@@ -147,7 +165,7 @@ export const useGame = create<GameState>((set, get) => {
       if (result.alerted) {
         get().pushNote("alert", "⚠ Wykryto podejrzaną aktywność! Poziom alarmu rośnie.");
       }
-      set({ tick: get().tick + 1 });
+      set({ tick: get().tick + 1, lastExit: { code: result.code, at: Date.now() } });
       const milestone = result.completedMissions.length > 0 || result.newlyAvailable.length > 0 || result.sessionChanged;
       manager?.markDirty(milestone ? "high" : "normal", line);
       return result;
@@ -245,12 +263,14 @@ export const useGame = create<GameState>((set, get) => {
     },
 
     pushNote: (kind, text) => {
-      const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      set({ notes: [...get().notes, { id, kind, text }] });
-      setTimeout(() => get().dismissNote(id), 6000);
+      const note: GameNote = { id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, kind, text, ts: Date.now() };
+      set({ notes: [...get().notes, note], noteHistory: [note, ...get().noteHistory].slice(0, 60) });
+      setTimeout(() => get().dismissNote(note.id), 6000);
     },
 
     dismissNote: (id) => set({ notes: get().notes.filter((n) => n.id !== id) }),
+    clearNoteHistory: () => set({ noteHistory: [] }),
+    dismissCelebration: (id) => set({ celebrations: get().celebrations.filter((c) => c.id !== id) }),
 
     resetToNewGame: async () => {
       await manager?.backup("przed nową grą");

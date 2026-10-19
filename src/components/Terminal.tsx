@@ -12,11 +12,39 @@ import { registerTerminal } from "./terminalBridge";
 type XTermMod = typeof import("@xterm/xterm");
 type FitMod = typeof import("@xterm/addon-fit");
 
-const THEMES: Record<string, Record<string, string>> = {
-  green: { background: "#060907", foreground: "#cbf0d5", cursor: "#36f38a", green: "#36f38a", red: "#ff5660" },
-  amber: { background: "#0a0805", foreground: "#f0dcb4", cursor: "#ffb000", green: "#ffb000", red: "#ff7a3c" },
-  blue: { background: "#05080c", foreground: "#c8dcf5", cursor: "#56aaff", green: "#56aaff", red: "#ff6472" },
+// xterm palettes derived from the BLACKNET OS tokens. ANSI green/blue carry
+// the theme accents, so the coloured prompt follows the selected theme.
+type XTheme = import("@xterm/xterm").ITheme;
+const BASE: XTheme = {
+  background: "#0B1218",
+  foreground: "#DCE8E5",
+  cursorAccent: "#0B1218",
+  selectionBackground: "rgba(90,184,255,0.28)",
+  black: "#17212B",
+  red: "#FF6478",
+  yellow: "#FFBD59",
+  magenta: "#C792EA",
+  white: "#C9D6D8",
+  brightBlack: "#647780",
+  brightRed: "#FF8A9A",
+  brightYellow: "#FFD08A",
+  brightMagenta: "#D9B2F2",
+  brightWhite: "#F2F8F6",
 };
+const THEMES: Record<string, XTheme> = {
+  green: { ...BASE, cursor: "#35E6A5", green: "#35E6A5", brightGreen: "#6FF0C0", blue: "#5AB8FF", brightBlue: "#8CCFFF", cyan: "#5AB8FF", brightCyan: "#8CCFFF" },
+  amber: { ...BASE, cursor: "#FFB547", green: "#FFB547", brightGreen: "#FFCB7A", blue: "#FF8A5C", brightBlue: "#FFAA85", cyan: "#FF8A5C", brightCyan: "#FFAA85" },
+  blue: { ...BASE, cursor: "#5AB8FF", green: "#5AB8FF", brightGreen: "#8CCFFF", blue: "#35E6A5", brightBlue: "#6FF0C0", cyan: "#35E6A5", brightCyan: "#6FF0C0" },
+};
+
+/** Colour a plain prompt "user@host:cwd$ " — identity in accent, path in accent2, root sigil red. */
+function colorPrompt(prompt: string): string {
+  const m = /^([^@]+@[^:]+):(.*)([#$]) $/.exec(prompt);
+  if (!m) return "\x1b[1;32m" + prompt + "\x1b[0m";
+  const [, who, path, sigil] = m;
+  const sig = sigil === "#" ? "\x1b[1;31m#" : "\x1b[0;37m$";
+  return `\x1b[1;32m${who}\x1b[0;90m:\x1b[1;34m${path}${sig}\x1b[0m `;
+}
 
 function longestCommonPrefix(strs: string[]): string {
   if (!strs.length) return "";
@@ -35,6 +63,21 @@ export default function Terminal() {
   const engine = useGame((s) => s.engine);
   const theme = useGame((s) => s.engine?.player.settings.theme ?? "green");
   const fontSize = useGame((s) => s.engine?.player.settings.fontSize ?? 14);
+  const termRef = useRef<import("@xterm/xterm").Terminal | null>(null);
+  const refitRef = useRef<() => void>(() => undefined);
+  // Read the latest look at creation time without making it an effect dependency.
+  const look = useRef({ theme, fontSize });
+  look.current = { theme, fontSize };
+
+  // Theme / font changes are applied live — the terminal (and its scrollback)
+  // is never rebuilt for presentation changes.
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.options.theme = THEMES[theme] ?? THEMES.green!;
+    term.options.fontSize = fontSize;
+    refitRef.current();
+  }, [theme, fontSize]);
 
   useEffect(() => {
     if (!containerRef.current || !engine) return;
@@ -66,12 +109,12 @@ export default function Terminal() {
 
     const writePrompt = () => {
       prompt = engine.prompt();
-      term!.write("\x1b[1m\x1b[38;5;120m" + prompt + "\x1b[0m");
+      term!.write(colorPrompt(prompt));
     };
 
     const refreshLine = () => {
       term!.write("\r\x1b[K");
-      term!.write("\x1b[1m\x1b[38;5;120m" + prompt + "\x1b[0m" + input);
+      term!.write(colorPrompt(prompt) + input);
       const back = input.length - cursor;
       if (back > 0) term!.write(`\x1b[${back}D`);
     };
@@ -217,33 +260,38 @@ export default function Terminal() {
     (async () => {
       const xterm: XTermMod = await import("@xterm/xterm");
       const fitMod: FitMod = await import("@xterm/addon-fit");
+      // xterm measures glyphs once at open — wait for the real font first.
+      await document.fonts?.load(`${look.current.fontSize}px "JetBrains Mono"`).catch(() => undefined);
       if (disposed) return;
-      const palette = THEMES[theme] ?? THEMES.green!;
       term = new xterm.Terminal({
         fontFamily: '"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace',
-        fontSize,
+        fontSize: look.current.fontSize,
+        lineHeight: 1.22,
         cursorBlink: true,
+        cursorStyle: "bar",
+        cursorWidth: 2,
         convertEol: true,
-        scrollback: 2000,
-        theme: {
-          background: palette.background,
-          foreground: palette.foreground,
-          cursor: palette.cursor,
-          selectionBackground: "rgba(54,243,138,0.3)",
-        },
+        scrollback: 4000,
+        theme: THEMES[look.current.theme] ?? THEMES.green!,
       });
       fit = new fitMod.FitAddon();
       term.loadAddon(fit);
       term.open(containerRef.current!);
+      termRef.current = term;
+      refitRef.current = refit;
       refit();
-      term.writeln("\x1b[1m\x1b[38;5;120m██ BLACKNET ██\x1b[0m  terminal operatora");
-      term.writeln("Wpisz \x1b[1mhelp\x1b[0m aby zobaczyć polecenia, \x1b[1mmissions\x1b[0m aby zacząć.");
+      term.writeln("\x1b[1;32mBLACKNET OS\x1b[0m \x1b[90m· terminal operatora · sieć fikcyjna, odizolowana\x1b[0m");
+      term.writeln("\x1b[90mWpisz\x1b[0m help \x1b[90maby zobaczyć polecenia,\x1b[0m missions \x1b[90maby zacząć.\x1b[0m");
       term.writeln("");
       writePrompt();
       term.onData(onData);
       term.focus();
 
-      cleanupBridge = registerTerminal({ onInput: onData, focus: () => term?.focus() });
+      cleanupBridge = registerTerminal({
+        onInput: onData,
+        focus: () => term?.focus(),
+        getSelection: () => term?.getSelection() ?? "",
+      });
 
       ro = new ResizeObserver(refit);
       ro.observe(containerRef.current!);
@@ -257,16 +305,18 @@ export default function Terminal() {
       window.visualViewport?.removeEventListener("resize", onViewport);
       ro?.disconnect();
       cleanupBridge?.();
+      termRef.current = null;
       term?.dispose();
     };
-    // Re-create the terminal when theme/font changes.
+    // Rebuilt only when a different game is loaded (restore/import/new game).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engine, theme, fontSize]);
+  }, [engine]);
 
   return (
     <div
       ref={containerRef}
-      className="h-full w-full overflow-hidden"
+      className="terminal-host relative h-full w-full overflow-hidden"
+      data-testid="terminal"
       onClick={() => {
         // Tap-to-focus brings up the iOS keyboard.
         const ta = containerRef.current?.querySelector("textarea");

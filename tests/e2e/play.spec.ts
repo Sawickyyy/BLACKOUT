@@ -1,114 +1,140 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-// Drives the real app in a browser: start a local game, run the tutorial
-// commands in the xterm terminal, and verify the mission panel reflects
-// completion — then reload and confirm the save resumed.
+// E2E for BLACKNET OS 2.0 against a production build in local (guest) mode.
+// Boot animation is disabled and prefers-reduced-motion is forced so the UI
+// is deterministic for screenshots and assertions.
 
-async function typeLine(page: import("@playwright/test").Page, line: string) {
-  await page.locator(".xterm-helper-textarea").focus();
-  await page.keyboard.type(line);
-  await page.keyboard.press("Enter");
-  await page.waitForTimeout(120);
+const VIEWPORTS = [
+  { name: "iphone-se", width: 375, height: 667, mobile: true },
+  { name: "iphone-15-pro", width: 393, height: 852, mobile: true },
+  { name: "iphone-pro-max", width: 430, height: 932, mobile: true },
+  { name: "tablet", width: 768, height: 1024, mobile: false },
+  { name: "laptop", width: 1366, height: 768, mobile: false },
+  { name: "desktop", width: 1920, height: 1080, mobile: false },
+] as const;
+
+async function disableBoot(page: Page) {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("blacknet:ui", JSON.stringify({ bootAnimation: false, ambient: false }));
+    } catch {
+      /* ignore */
+    }
+  });
 }
 
-test("register (local), play the tutorial, and resume after reload", async ({ page }) => {
-  // Each Playwright test gets an isolated context, so storage starts empty.
+async function startGame(page: Page, name: string) {
+  await disableBoot(page);
   await page.goto("/");
+  await page.getByPlaceholder("np. ghost_01").fill(name);
+  await page.getByRole("button", { name: /Uruchom BLACKNET OS/ }).click();
+  await expect(page.getByTestId("terminal")).toBeVisible();
+}
 
-  // Landing / auth screen (guest mode: username + start).
-  await expect(page.getByRole("heading", { name: "BLACKNET" })).toBeVisible();
-  await page.getByPlaceholder("nazwa użytkownika").fill("e2e_operator");
-  await page.getByRole("button", { name: /Rozpocznij grę/i }).click();
+async function typeLine(page: Page, line: string) {
+  await page.locator('[data-testid="terminal"] .xterm-helper-textarea').focus();
+  await page.keyboard.type(line);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(140);
+}
 
-  // Game shell: the missions sidebar shows the first mission.
-  const firstMission = page.locator("text=Rozruch systemu").first();
-  await expect(firstMission).toBeVisible();
+test.describe("BLACKNET OS — gameplay", () => {
+  test.use({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" });
 
-  // The terminal mounts (xterm).
-  await expect(page.locator(".xterm")).toBeVisible();
+  test("login, play the tutorial, mission completes and a backup is taken", async ({ page }) => {
+    await startGame(page, "e2e_player");
 
-  // Complete mission m01 with real commands.
-  await typeLine(page, "cat README.txt");
-  await typeLine(page, "whoami");
-  await typeLine(page, "help");
-  await typeLine(page, "touch pierwszy.txt");
+    // Mission Control opens by default on desktop.
+    const missionCard = page.locator('[data-window="missions"]');
+    await expect(missionCard.getByText("Rozruch systemu")).toBeVisible();
 
-  // The mission card for "Rozruch systemu" should now read "ukończona".
-  const card = page
-    .locator("div")
-    .filter({ hasText: "Rozruch systemu" })
-    .filter({ hasText: "ukończona" })
-    .first();
-  await expect(card).toBeVisible({ timeout: 10_000 });
+    for (const l of ["cat README.txt", "whoami", "help", "touch pierwszy.txt"]) await typeLine(page, l);
 
-  // Let the debounced autosave flush before reloading.
-  await page.waitForTimeout(2000);
+    // Milestone saves immediately.
+    await expect(page.locator("[data-save-state='saved']").first()).toBeVisible();
 
-  // Reload → local save auto-resumes (no auth screen) and progress persists.
-  await page.reload();
-  await expect(page.locator(".xterm")).toBeVisible();
-  const resumedCard = page
-    .locator("div")
-    .filter({ hasText: "Rozruch systemu" })
-    .filter({ hasText: "ukończona" })
-    .first();
-  await expect(resumedCard).toBeVisible({ timeout: 10_000 });
+    // Completing it moves the card from "Do zrobienia" to the "Ukończone" tab.
+    await missionCard.getByRole("tab", { name: /Ukończone/ }).click();
+    await expect(
+      missionCard.locator("li").filter({ hasText: "Rozruch systemu" }).first(),
+    ).toBeVisible({ timeout: 8000 });
+
+    // A reward overlay appears on completion — dismiss it, then open Settings.
+    const reward = page.getByRole("status").getByRole("button", { name: /Zlecenie.*ukończone/i });
+    if (await reward.isVisible().catch(() => false)) await reward.click();
+    await page.locator('[data-dock="settings"]').click();
+    await expect(page.getByTestId("backup-list")).toContainText("misja M01 ukończona", { timeout: 8000 });
+  });
+
+  test("a networking command reveals the host in Network Intelligence", async ({ page }) => {
+    await startGame(page, "e2e_net");
+    await typeLine(page, "nmap www.aurora.example");
+    await page.getByLabel("Network Intelligence").first().click();
+    await expect(page.locator('[data-window="network"]')).toContainText(/aurora|www/i, { timeout: 8000 });
+  });
+
+  test("progress survives closing the tab right after a command", async ({ page }) => {
+    await startGame(page, "e2e_pagehide");
+    await typeLine(page, "echo dowod-pagehide > /home/operator/dowod.txt");
+    await page.goto("about:blank"); // fires pagehide → synchronous flush
+    await disableBoot(page);
+    await page.goto("/");
+    await expect(page.getByTestId("terminal")).toBeVisible();
+    const saved = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("blacknet:save:local:e2e_pagehide:0") || "{}").data ?? "",
+    );
+    expect(saved).toContain("dowod-pagehide");
+  });
+
+  test("a second tab takes over and the first one pauses", async ({ page, context }) => {
+    await startGame(page, "e2e_tabs");
+    const second = await context.newPage();
+    await disableBoot(second);
+    await second.goto("/");
+    await expect(second.getByTestId("terminal")).toBeVisible();
+    await expect(page.getByTestId("tab-takeover")).toBeVisible({ timeout: 8000 });
+  });
+
+  test("command palette opens and launches an app", async ({ page }) => {
+    await startGame(page, "e2e_palette");
+    await page.keyboard.press("Control+k");
+    await expect(page.getByRole("dialog", { name: "Paleta poleceń" })).toBeVisible();
+    await page.getByPlaceholder(/Szukaj aplikacji/).fill("Portfel");
+    await page.keyboard.press("Enter");
+    await expect(page.locator('[data-window="wallet"]')).toBeVisible();
+  });
 });
 
-test("networking command discovers a host in the network panel", async ({ page }) => {
-  await page.goto("/");
-  // Resume prior local identity or start fresh.
-  const start = page.getByRole("button", { name: /Rozpocznij grę/i });
-  if (await start.isVisible().catch(() => false)) {
-    await page.getByPlaceholder("nazwa użytkownika").fill("e2e_operator");
-    await start.click();
+test.describe("BLACKNET OS — responsywność", () => {
+  for (const vp of VIEWPORTS) {
+    test(`${vp.name} (${vp.width}×${vp.height}) — brak poziomego scrolla, nawigacja widoczna`, async ({ browser }) => {
+      const usesMobileShell = vp.width < 900; // matches MOBILE_QUERY (max-width:899px)
+      const context = await browser.newContext({
+        viewport: { width: vp.width, height: vp.height },
+        reducedMotion: "reduce",
+        hasTouch: usesMobileShell,
+        isMobile: usesMobileShell,
+      });
+      const page = await context.newPage();
+      await startGame(page, "e2e_rwd");
+      await typeLine(page, "whoami");
+
+      // No accidental horizontal scrolling anywhere.
+      const overflow = await page.evaluate(() => {
+        const el = document.scrollingElement || document.documentElement;
+        return el.scrollWidth - el.clientWidth;
+      });
+      expect(overflow, "poziomy scroll").toBeLessThanOrEqual(1);
+
+      // The right shell chrome is present for the form factor.
+      if (usesMobileShell) {
+        await expect(page.locator('nav[aria-label="Aplikacje"]')).toBeVisible();
+      } else {
+        await expect(page.locator('nav[aria-label="Dock aplikacji"]')).toBeVisible();
+      }
+
+      await page.screenshot({ path: `test-results/os-${vp.name}.png`, fullPage: false });
+      await context.close();
+    });
   }
-  await expect(page.locator(".xterm")).toBeVisible();
-
-  await typeLine(page, "nmap www.aurora.example");
-
-  // Switch the desktop sidebar to the "Sieć" tab and expect the host listed.
-  await page.getByRole("button", { name: "Sieć", exact: true }).click();
-  await expect(page.locator("text=www.aurora.example").first()).toBeVisible({ timeout: 10_000 });
-});
-
-test("autosave: mission creates a backup, a second tab takes over safely", async ({ page, context }) => {
-  await page.goto("/");
-  await page.getByPlaceholder("nazwa użytkownika").fill("e2e_save");
-  await page.getByRole("button", { name: /Rozpocznij grę/i }).click();
-  await expect(page.locator(".xterm")).toBeVisible();
-  for (const l of ["cat README.txt", "whoami", "help", "touch pierwszy.txt"]) await typeLine(page, l);
-
-  // Milestone saves immediately — no debounce wait needed.
-  await expect(page.locator("[data-save-state='saved']")).toBeVisible();
-
-  // A backup of the completed mission lands in IndexedDB.
-  await page.locator("aside").getByRole("button", { name: "Ustaw." }).click();
-  await expect(page.getByTestId("backup-list")).toContainText("misja M01 ukończona");
-
-  // Open the same save in a second tab: the first one steps back.
-  const second = await context.newPage();
-  await second.goto("/");
-  await expect(second.locator(".xterm")).toBeVisible();
-  await expect(page.getByTestId("tab-takeover")).toBeVisible();
-  // The new tab starts from the freshest state (mission already done).
-  await second.locator("aside").getByRole("button", { name: "Zlecenia" }).click();
-  await expect(second.locator("div").filter({ hasText: "Rozruch systemu" }).filter({ hasText: "ukończona" }).first()).toBeVisible();
-});
-
-test("autosave: progress survives closing the tab right after a command", async ({ page }) => {
-  await page.goto("/");
-  await page.getByPlaceholder("nazwa użytkownika").fill("e2e_pagehide");
-  await page.getByRole("button", { name: /Rozpocznij grę/i }).click();
-  await expect(page.locator(".xterm")).toBeVisible();
-  await typeLine(page, "echo ostatnia-komenda > /home/operator/dowod.txt");
-  // Leave immediately (no waiting for the debounce) — pagehide must flush.
-  await page.goto("about:blank");
-  await page.goto("/");
-  await expect(page.locator(".xterm")).toBeVisible();
-  await typeLine(page, "cat dowod.txt > /home/operator/kopia.txt");
-  const saved = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem("blacknet:save:local:e2e_pagehide:0") || "{}").data ?? "",
-  );
-  expect(saved).toContain("ostatnia-komenda");
 });

@@ -1,14 +1,14 @@
 /** @type {import('next').NextConfig} */
 
 // Content Security Policy. The game engine runs locally and needs no external
-// scripts; the allowances below cover Monaco (loaded from jsDelivr with blob
-// workers), Google Fonts, and Supabase. The virtual in-game browser renders
+// scripts; fonts are self-hosted. The allowances below cover Monaco (loaded
+// from jsDelivr with blob workers) and Supabase. The virtual in-game browser renders
 // fictional pages inside a sandboxed, script-less iframe (srcdoc + sandbox="").
 const csp = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net blob:",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
-  "font-src 'self' https://fonts.gstatic.com data:",
+  "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+  "font-src 'self' data: https://cdn.jsdelivr.net",
   "img-src 'self' data: blob:",
   "connect-src 'self' https://*.supabase.co https://*.supabase.in https://cdn.jsdelivr.net",
   "worker-src 'self' blob:",

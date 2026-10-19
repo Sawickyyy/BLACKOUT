@@ -2,46 +2,111 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Theme tokens ──────────────────────────────────────────────────────────
-   Colours are "R G B" triples consumed via rgb(var(--x) / alpha) in Tailwind.
-   Green is the default; amber and blue swap the accent + foreground tints. */
+/* ══════════════════════════════════════════════════════════════════════════
+   BLACKNET OS — design tokens
+   Colours are "R G B" triples (Tailwind reads them as rgb(var(--x) / a)).
+   Runtime switches live on <html>:
+     data-theme     green | amber | blue          (saved with the game)
+     data-contrast  normal | high                 (UI preference)
+     data-motion    full | reduced                (save setting + OS pref)
+     data-scale     90 | 100 | 110 | 120          (UI preference)
+     --glass-alpha / --glass-blur                 (UI preference)
+   ══════════════════════════════════════════════════════════════════════════ */
 :root {
-  --bg: 6 9 7;
-  --panel: 12 17 13;
-  --panel2: 17 24 19;
-  --line: 30 54 40;
-  --accent: 54 243 138;
-  --accent2: 60 200 255;
-  --fg: 203 240 213;
-  --muted: 110 140 120;
-  --danger: 255 86 96;
-  --warn: 255 190 70;
-  --ok: 90 230 150;
+  --bg: 7 11 16; /* #070B10 */
+  --surface: 16 24 32; /* #101820 */
+  --elevated: 23 33 43; /* #17212B */
+  --accent: 53 230 165; /* #35E6A5 */
+  --accent2: 90 184 255; /* #5AB8FF */
+  --text: 234 244 241; /* #EAF4F1 */
+  --text-2: 145 167 170; /* #91A7AA */
+  --muted: 123 143 151; /* #7B8F97 — lifted from #647780 for WCAG AA */
+  --line: 255 255 255; /* used with low alpha */
+  --warn: 255 189 89; /* #FFBD59 */
+  --danger: 255 100 120; /* #FF6478 */
+  --ok: 53 230 165;
+
+  --glass-rgb: 20 30 40;
+  --glass-alpha: 0.72;
+  --glass-blur: 18px;
+  --line-alpha: 0.08;
+
+  --radius: 10px;
+  --radius-lg: 16px;
+  --shadow-window: 0 24px 64px -12px rgb(0 0 0 / 0.65), 0 2px 6px rgb(0 0 0 / 0.35);
+  --shadow-pop: 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 1px 3px rgb(0 0 0 / 0.4);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+
+  --font-ui: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Visible viewport height (updated from visualViewport for the iOS keyboard). */
+  --app-h: 100dvh;
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+
+  color-scheme: dark;
 }
 
 :root[data-theme="amber"] {
-  --bg: 10 8 5;
-  --panel: 18 14 9;
-  --panel2: 24 19 12;
-  --line: 60 44 20;
-  --accent: 255 176 0;
-  --accent2: 255 120 40;
-  --fg: 240 220 180;
-  --muted: 150 130 90;
+  --accent: 255 181 71;
+  --accent2: 255 138 92;
+  --ok: 120 220 140;
 }
 
 :root[data-theme="blue"] {
-  --bg: 5 8 12;
-  --panel: 11 15 22;
-  --panel2: 15 21 30;
-  --line: 28 44 66;
-  --accent: 86 170 255;
-  --accent2: 120 230 255;
-  --fg: 200 220 245;
-  --muted: 110 130 160;
+  --accent: 90 184 255;
+  --accent2: 53 230 165;
 }
 
+:root[data-contrast="high"] {
+  --text-2: 196 212 214;
+  --muted: 168 184 190;
+  --line-alpha: 0.22;
+  --glass-alpha: 0.96;
+  --glass-blur: 0px;
+}
+
+:root[data-scale="90"] { font-size: 14.4px; }
+:root[data-scale="100"] { font-size: 16px; }
+:root[data-scale="110"] { font-size: 17.6px; }
+:root[data-scale="120"] { font-size: 19.2px; }
+
+:root[data-motion="reduced"] {
+  --dur-fast: 0ms;
+  --dur-base: 0ms;
+  --dur-slow: 0ms;
+}
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── base ─────────────────────────────────────────────────────────────────── */
 * {
   box-sizing: border-box;
 }
@@ -52,142 +117,178 @@ body {
   padding: 0;
   height: 100%;
   background: rgb(var(--bg));
-  color: rgb(var(--fg));
-  font-family: var(--font-mono);
+  color: rgb(var(--text));
+  font-family: var(--font-ui);
+  font-feature-settings: "cv11", "ss01";
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  /* Fill the visual viewport on iOS, below the notch. */
   min-height: 100dvh;
+  overflow: hidden;
+  line-height: 1.5;
 }
 
-/* CRT scanline + vignette overlay, toggled by the `crt` class on <html>. */
-:root.crt body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 50;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0) 0,
-    rgba(0, 0, 0, 0) 2px,
-    rgba(0, 0, 0, 0.18) 3px,
-    rgba(0, 0, 0, 0) 4px
-  );
-  mix-blend-mode: multiply;
+/* Never let anything create horizontal page scroll. */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
-:root.crt body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 50;
-  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.45) 100%);
+::selection {
+  background: rgb(var(--accent) / 0.3);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .animate-flicker,
-  .animate-scan {
-    animation: none !important;
+/* Focus: always visible for keyboard users, never for mouse clicks. */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ── layers ───────────────────────────────────────────────────────────────── */
+@layer components {
+  /* Translucent chrome: bars, menus, sheets, modals. */
+  .glass {
+    background: rgb(var(--glass-rgb) / var(--glass-alpha));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    border: 1px solid rgb(var(--line) / var(--line-alpha));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+  }
+  /* Opaque surfaces for content (terminal stays crisp). */
+  .os-surface {
+    background: rgb(var(--surface));
+    border: 1px solid rgb(var(--line) / var(--line-alpha));
+  }
+  .os-elevated {
+    background: rgb(var(--elevated));
+    border: 1px solid rgb(var(--line) / var(--line-alpha));
+  }
+  .hairline {
+    border-color: rgb(var(--line) / var(--line-alpha));
+  }
+  .os-label {
+    @apply text-2xs font-medium uppercase tracking-[0.08em] text-muted;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .scroll-area {
+    overflow: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--line) / 0.18) transparent;
+  }
+
+  /* Legacy helpers kept so un-migrated markup still renders consistently. */
+  .surface {
+    @apply os-surface;
+  }
+  .surface-2 {
+    @apply os-elevated;
+  }
+  .btn {
+    @apply inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-medium text-fg transition-colors duration-fast;
+    background: rgb(var(--elevated));
+    border: 1px solid rgb(var(--line) / var(--line-alpha));
+  }
+  .btn:hover:not(:disabled) {
+    border-color: rgb(var(--accent) / 0.45);
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: rgb(var(--accent) / 0.14);
+    border-color: rgb(var(--accent) / 0.5);
+    color: rgb(var(--accent));
+  }
+  .input {
+    @apply w-full rounded-lg px-3 py-2 text-sm text-fg placeholder:text-muted;
+    background: rgb(var(--bg) / 0.6);
+    border: 1px solid rgb(var(--line) / 0.12);
+    font-size: max(16px, 0.875rem); /* ≥16px stops iOS zoom-on-focus */
+  }
+  .input:focus {
+    border-color: rgb(var(--accent) / 0.7);
+    box-shadow: 0 0 0 3px rgb(var(--accent) / 0.15);
+    outline: none;
   }
 }
 
-/* Scrollbars */
+/* Scrollbars (WebKit) */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: rgb(var(--panel));
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgb(var(--line));
-  border-radius: 4px;
+  background: rgb(var(--line) / 0.12);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--accent) / 0.5);
+  background: rgb(var(--line) / 0.24);
+  background-clip: padding-box;
 }
 
-/* Utility: subtle panel surface */
-.surface {
-  background: rgb(var(--panel));
-  border: 1px solid rgb(var(--line));
-}
-.surface-2 {
-  background: rgb(var(--panel2));
-  border: 1px solid rgb(var(--line));
-}
-
-.glow-text {
-  text-shadow: 0 0 6px rgb(var(--accent) / 0.6);
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.85rem;
-  border: 1px solid rgb(var(--line));
-  background: rgb(var(--panel2));
-  color: rgb(var(--fg));
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.8rem;
-  transition: all 0.12s ease;
-  min-height: 38px;
-}
-.btn:hover {
-  border-color: rgb(var(--accent) / 0.7);
-  color: rgb(var(--accent));
-}
-.btn:active {
-  transform: translateY(1px);
-}
-.btn-primary {
-  background: rgb(var(--accent) / 0.14);
-  border-color: rgb(var(--accent) / 0.6);
-  color: rgb(var(--accent));
-}
-.btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.input {
-  width: 100%;
-  padding: 0.6rem 0.75rem;
-  background: rgb(var(--bg));
-  border: 1px solid rgb(var(--line));
-  color: rgb(var(--fg));
-  border-radius: 6px;
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-}
-.input:focus {
-  outline: none;
-  border-color: rgb(var(--accent) / 0.8);
-  box-shadow: 0 0 0 1px rgb(var(--accent) / 0.4);
-}
-
-/* xterm fills its container */
+/* ── terminal ─────────────────────────────────────────────────────────────── */
 .xterm {
   height: 100%;
-  padding: 8px;
+  padding: 10px 4px 6px 12px;
 }
-.xterm-viewport::-webkit-scrollbar {
-  width: 8px;
+.xterm-viewport {
+  background: transparent !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--line) / 0.18) transparent;
+}
+/* Optional CRT treatment, confined to the terminal so the OS stays crisp. */
+.crt-on .terminal-host::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom, transparent 0 2px, rgb(0 0 0 / 0.16) 3px, transparent 4px);
+  mix-blend-mode: multiply;
 }
 
-/* Safe-area helpers for iOS */
-.safe-b {
-  padding-bottom: env(safe-area-inset-bottom);
+/* ── wallpaper ────────────────────────────────────────────────────────────── */
+.os-wallpaper {
+  background:
+    radial-gradient(60% 50% at 18% 12%, rgb(var(--accent) / 0.1), transparent 70%),
+    radial-gradient(50% 45% at 85% 85%, rgb(var(--accent2) / 0.09), transparent 70%),
+    radial-gradient(120% 90% at 50% 50%, rgb(var(--surface)) 0%, rgb(var(--bg)) 70%);
 }
-.safe-t {
-  padding-top: env(safe-area-inset-top);
+.os-grid {
+  background-image:
+    linear-gradient(rgb(var(--line) / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--line) / 0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(80% 70% at 50% 40%, black, transparent);
+  -webkit-mask-image: radial-gradient(80% 70% at 50% 40%, black, transparent);
+}
+
+.safe-top {
+  padding-top: var(--sat);
+}
+.safe-bottom {
+  padding-bottom: var(--sab);
+}
+.safe-x {
+  padding-left: var(--sal);
+  padding-right: var(--sar);
 }

@@ -1,13 +1,13 @@
 {
-  "name": "BLACKNET — Symulator Hakera",
+  "name": "BLACKNET OS",
   "short_name": "BLACKNET",
   "description": "Realistyczny symulator hakera w fikcyjnym, odizolowanym internecie.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#060907",
-  "theme_color": "#060907",
+  "background_color": "#070B10",
+  "theme_color": "#070B10",
   "icons": [
     {
       "src": "/icon.svg",

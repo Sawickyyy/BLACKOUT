@@ -1,9 +1,11 @@
-# BLACKNET — Symulator Hakera
+# BLACKNET OS — Symulator Hakera
 
 BLACKNET to realistyczna, trwała gra-symulator hakera działająca w przeglądarce.
 Grasz w **fikcyjnym, całkowicie odizolowanym internecie**: obsługujesz prawdziwy
 terminal uniksowy, prowadzisz rozpoznanie sieci, wykonujesz edukacyjne misje
-cyberbezpieczeństwa, zdobywasz nagrody i wracasz później z zachowanym postępem.
+cyberbezpieczeństwa, zdobywasz nagrody i wracasz później z zachowanym postępem. Interfejs to **BLACKNET OS 2.0** —
+system operacyjny z menedżerem okien na desktopie i dedykowanym układem na
+iPhonie (szczegóły: `docs/REDESIGN.md`).
 
 > ⚠️ **Wszystkie systemy, sieci, organizacje i podatności w grze są wymyślone.**
 > Silnik sieciowy to wewnętrzna symulacja — żadne polecenie nie opuszcza gry i
