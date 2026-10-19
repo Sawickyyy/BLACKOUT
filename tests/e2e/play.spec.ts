@@ -103,6 +103,46 @@ test.describe("BLACKNET OS — gameplay", () => {
     await page.keyboard.press("Enter");
     await expect(page.locator('[data-window="wallet"]')).toBeVisible();
   });
+
+  test("the editor opens and shows the current host's files", async ({ page }) => {
+    await startGame(page, "e2e_editor");
+    await page.locator('[data-dock="editor"]').click();
+    const win = page.locator('[data-window="editor"]');
+    await expect(win.getByRole("button", { name: /Zapisz/ })).toBeVisible();
+    // The file tree lists the home directory (README.txt is seeded there).
+    await expect(win.getByText("README.txt")).toBeVisible({ timeout: 8000 });
+  });
+
+  test("CCTV: no feeds until an NVR is taken over, then live view renders", async ({ page }) => {
+    await startGame(page, "e2e_cctv");
+
+    // Empty state before any camera access.
+    await page.locator('[data-dock="cctv"]').click();
+    await expect(page.locator('[data-window="cctv"]')).toContainText(/Brak dostępnych kamer/);
+
+    // Unlock the Vertex NVR: recon + default-credential SSH login.
+    for (const l of [
+      "cat README.txt",
+      "whoami",
+      "help",
+      "touch p.txt",
+      "nslookup aurora.example",
+      "ping -c1 www.aurora.example",
+      "nmap -sV www.aurora.example",
+      "nmap -sV nvr.vertex-sec.example",
+      "ssh cctv@nvr.vertex-sec.example --password cctv1234",
+      "exit",
+    ]) {
+      await typeLine(page, l);
+    }
+
+    // Now the CCTV app shows a live feed with its clock overlay.
+    await page.locator('[data-dock="cctv"]').click();
+    await expect(page.getByTestId("cctv-canvas")).toBeVisible({ timeout: 8000 });
+    await expect(page.getByTestId("cctv-clock")).toBeVisible();
+    // Jumping to the motion event and watching satisfies the "watch" objective.
+    await expect(page.getByTestId("cctv-timeline")).toBeVisible();
+  });
 });
 
 test.describe("BLACKNET OS — responsywność", () => {

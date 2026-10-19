@@ -19,6 +19,7 @@ import { MISSIONS } from "@/engine/missions/defs";
 import { useGame } from "@/store/gameStore";
 import AutosaveSection from "@/components/panels/AutosaveSection";
 import { usePrefs, type UiPrefs } from "../prefs";
+import { previewSound } from "../sound";
 import { deleteAccountData, logout } from "../session";
 import { OSButton, OSDialog, OSInput } from "../ui";
 
@@ -144,6 +145,16 @@ export default function SettingsApp({ mobile }: { mobile: boolean }) {
           </Row>
           <Row label="Animowane tło" hint="Subtelny ruch siatki pulpitu">
             <Toggle label="Animowane tło" checked={prefs.ambient} onChange={(v) => setP("ambient", v)} />
+          </Row>
+          <Row label="Dźwięk" hint="Efekty: klawiatura, alarm, ukończenie zlecenia">
+            <Toggle
+              label="Dźwięk"
+              checked={prefs.sound}
+              onChange={(v) => {
+                setP("sound", v);
+                if (v) previewSound();
+              }}
+            />
           </Row>
         </Section>
 

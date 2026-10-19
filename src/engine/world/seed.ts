@@ -463,6 +463,137 @@ function nullsecNode(): Host {
   });
 }
 
+// ── Vertex Security (CCTV / building security contractor) ───────────────────
+// A network video recorder reachable from the internet with a weak, default
+// operator account — a common real-world misconfiguration. Once the player
+// holds the `cctv` account they can open the live view in the CCTV app and
+// must actually watch the feeds to find the details the mission asks for.
+function vertexNvr(): Host {
+  return linuxHost({
+    id: "vertex-nvr",
+    hostname: "nvr.vertex-sec.example",
+    ip: "198.51.100.70",
+    cidr: "198.51.100.0/24",
+    gateway: "198.51.100.1",
+    org: "vertex",
+    os: "BusyBox Linux (HiSilicon NVR)",
+    idsSensitivity: 0.25,
+    users: [
+      user("root", 0, { password: "vertex-nvr-root" }),
+      // Operator account left on the vendor default — the way in.
+      user("cctv", 1500, { gid: 1500, password: "cctv1234", home: "/home/cctv" }),
+    ],
+    services: [
+      svc(22, "ssh", "Dropbear sshd 2022.82", {
+        product: "Dropbear",
+        version: "2022.82",
+        creds: [{ user: "cctv", password: "cctv1234" }],
+      }),
+      svc(8080, "http", "lighttpd/1.4.59", {
+        product: "lighttpd",
+        version: "1.4.59",
+        www: {
+          "/":
+            "<html><head><title>Vertex NVR-8 // logowanie</title></head><body>" +
+            "<h1>Vertex NVR-8</h1><p>System dozoru wizyjnego. Wymagane logowanie operatora.</p>" +
+            "<!-- TODO(serwis): zmienić domyślne hasło operatora przed oddaniem obiektu --></body></html>",
+          "/device.json":
+            JSON.stringify(
+              {
+                model: "Vertex NVR-8",
+                firmware: "3.4.1",
+                channels: 5,
+                ssh: "enabled",
+                note: "Konto serwisowe operatora: cctv. Hasło fabryczne: cctv1234 (zmień po instalacji).",
+              },
+              null,
+              2,
+            ) + "\n",
+          "/robots.txt": "User-agent: *\nDisallow: /device.json\nDisallow: /cgi-bin/\n",
+        },
+      }),
+    ],
+    files: {
+      home: {
+        cctv: {
+          "README.txt":
+            "Konto operatora kamer. Podgląd na żywo: aplikacja CCTV w BLACKNET OS\n" +
+            "albo lokalnie na urządzeniu NVR. Nagrania z ostatniej doby w pętli.\n",
+        },
+      },
+    },
+    logs: [
+      { ts: T(1), facility: "auth", message: "Accepted password for cctv from 198.51.100.1 port 50122 ssh2" },
+      { ts: T(1, 2, 11), facility: "daemon", message: "motion: kanał 2 (Lobby) — wykryto ruch 02:11" },
+    ],
+    cctv: {
+      label: "Vertex NVR-8",
+      requiresUser: "cctv",
+      feeds: [
+        {
+          id: "cam1",
+          name: "Parking P1",
+          zone: "Parking zewnętrzny",
+          scene: "parking",
+          events: [
+            {
+              at: 2 * 3600 + 14 * 60,
+              duration: 7 * 60,
+              label: "Dostawczak podjeżdża pod rampę",
+              // The key detail for the mission — readable on the plate overlay.
+              detail: "tablica: WX 8831K",
+            },
+          ],
+        },
+        {
+          id: "cam2",
+          name: "Lobby",
+          zone: "Wejście główne",
+          scene: "lobby",
+          events: [
+            {
+              at: 2 * 3600 + 11 * 60,
+              duration: 3 * 60,
+              label: "Osoba wchodzi bez karty dostępu",
+              detail: "czas wejścia: 02:11",
+            },
+          ],
+        },
+        {
+          id: "cam3",
+          name: "Serwerownia",
+          zone: "Strefa chroniona",
+          scene: "server",
+          events: [
+            {
+              at: 2 * 3600 + 23 * 60,
+              duration: 5 * 60,
+              label: "Otwarcie szafy rack 03",
+              detail: "kod serwisowy na tablicy: VX-7731",
+            },
+          ],
+        },
+        {
+          id: "cam4",
+          name: "Korytarz B",
+          zone: "Piętro -1",
+          scene: "corridor",
+          events: [{ at: 2 * 3600 + 17 * 60, duration: 2 * 60, label: "Postać mija kamerę" }],
+        },
+        {
+          id: "cam5",
+          name: "Rampa załadunkowa",
+          zone: "Strefa dostaw",
+          scene: "dock",
+          events: [
+            { at: 2 * 3600 + 20 * 60, duration: 9 * 60, label: "Rozładunek przy rampie" },
+          ],
+        },
+      ],
+    },
+  });
+}
+
 // ── DNS + organizations ─────────────────────────────────────────────────────
 function dnsRecords(): DnsRecord[] {
   const a = (name: string, value: string): DnsRecord => ({ name, type: "A", value });
@@ -484,6 +615,8 @@ function dnsRecords(): DnsRecord[] {
     a("www.newswire.example", "192.0.2.80"),
     a("board.hollow", "10.66.6.6"),
     a("node.nullsec", "192.0.2.200"),
+    a("nvr.vertex-sec.example", "198.51.100.70"),
+    a("vertex-sec.example", "198.51.100.70"),
     { name: "aurora.example", type: "MX", value: "mail.aurora.example" },
     { name: "aurora.example", type: "TXT", value: "blacknet-hint: zacznij od robots.txt" },
     { name: "www.aurora.example", type: "CNAME", value: "aurora.example" },
@@ -508,6 +641,7 @@ function organizations(): Record<string, Organization> {
     news: mk("news", "NewsWire", "news", "Serwis informacyjny."),
     hollow: mk("hollow", "The Hollow", "underground", "Forum podziemia."),
     nullsec: mk("nullsec", "NullSec", "underground", "Wroga grupa hakerska."),
+    vertex: mk("vertex", "Vertex Security", "tech", "Firma dozoru wizyjnego z niezmienionymi hasłami fabrycznymi."),
     isp: mk("isp", "BLACKNET ISP", "isp", "Operator szkieletu sieci."),
   };
 }
@@ -540,6 +674,7 @@ export function buildWorld(): WorldState {
     newsWire(),
     theHollow(),
     nullsecNode(),
+    vertexNvr(),
   ];
   const map: Record<string, Host> = {};
   for (const h of hosts) map[h.id] = h;
@@ -588,12 +723,18 @@ export function newPlayer(username: string, world: WorldState): PlayerState {
     accessByHost: { local: ["operator", "root"] },
     settings: { theme: "green", crt: true, reducedMotion: false, fontSize: 14 },
     terminalHistory: [],
+    hintsUsed: {},
+    tutorialSeen: false,
+    cctvViewed: [],
     createdAt: now,
     updatedAt: now,
   };
 }
 
+/** Current save schema version. Bumped when the world/player shape grows. */
+export const SAVE_VERSION = 2;
+
 export function newSaveGame(username: string): SaveGame {
   const world = buildWorld();
-  return { version: 1, player: newPlayer(username, world), world };
+  return { version: SAVE_VERSION, player: newPlayer(username, world), world };
 }

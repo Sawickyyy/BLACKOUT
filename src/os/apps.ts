@@ -3,16 +3,27 @@
 
 import {
   Crosshair,
+  FileCode2,
   FolderTree,
   Globe2,
   Network,
   Settings2,
   SquareTerminal,
+  Video,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
 
-export type AppId = "terminal" | "missions" | "network" | "files" | "browser" | "wallet" | "settings";
+export type AppId =
+  | "terminal"
+  | "missions"
+  | "network"
+  | "files"
+  | "browser"
+  | "cctv"
+  | "editor"
+  | "wallet"
+  | "settings";
 
 export interface AppMeta {
   id: AppId;
@@ -78,6 +89,26 @@ export const APPS: Record<AppId, AppMeta> = {
     size: { w: 820, h: 560 },
     min: { w: 420, h: 320 },
   },
+  cctv: {
+    id: "cctv",
+    title: "CCTV",
+    short: "CCTV",
+    description: "Podgląd kamer przejętych rejestratorów",
+    icon: Video,
+    tint: "255 107 122",
+    size: { w: 900, h: 600 },
+    min: { w: 420, h: 340 },
+  },
+  editor: {
+    id: "editor",
+    title: "Edytor",
+    short: "Edytor",
+    description: "Edytor plików bieżącego hosta (Monaco)",
+    icon: FileCode2,
+    tint: "120 170 255",
+    size: { w: 820, h: 580 },
+    min: { w: 420, h: 320 },
+  },
   wallet: {
     id: "wallet",
     title: "Portfel",
@@ -100,7 +131,17 @@ export const APPS: Record<AppId, AppMeta> = {
   },
 };
 
-export const APP_IDS: AppId[] = ["terminal", "missions", "network", "files", "browser", "wallet", "settings"];
+export const APP_IDS: AppId[] = [
+  "terminal",
+  "missions",
+  "network",
+  "files",
+  "editor",
+  "browser",
+  "cctv",
+  "wallet",
+  "settings",
+];
 
 /** Primary apps on the phone dock; the rest live in the launcher. */
 export const MOBILE_DOCK: AppId[] = ["terminal", "missions", "network", "browser"];

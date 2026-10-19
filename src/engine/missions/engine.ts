@@ -31,6 +31,8 @@ export interface MissionCtx {
   /** True if the current event matches a kind + optional host. */
   eventIs(kind: string, hostId?: string): boolean;
   suspicionBelow(n: number): boolean;
+  /** True if the player has opened a camera feed (optionally a specific one). */
+  cctvViewed(hostId: string, feedId?: string): boolean;
 }
 
 export interface MissionReward {
@@ -58,7 +60,71 @@ export interface Mission {
   prereq?: string[];
   reward: MissionReward;
   objectives: MissionObjective[];
+  /** Escalating hint ladder, revealed one at a time by the paid `hint` command. */
+  hints?: string[];
   failIf?(mc: MissionCtx): boolean;
+}
+
+/**
+ * The ordered hints shown by the paid `hint` command: the mission's explicit
+ * ladder if it has one, otherwise a fallback built from each objective's hint
+ * and finally the brief, so every mission can always offer at least one.
+ */
+export function hintLadder(m: Mission): string[] {
+  if (m.hints && m.hints.length) return m.hints;
+  const fromObjectives = m.objectives.map((o) => o.hint).filter((h): h is string => !!h);
+  if (fromObjectives.length) return fromObjectives;
+  return [m.brief];
+}
+
+export interface HintResult {
+  ok: boolean;
+  text?: string;
+  cost?: number;
+  remaining?: number;
+  error?: string;
+}
+
+/** Find the mission a bare `hint` should target: explicit ref, else active, else available. */
+export function resolveHintMission(player: PlayerState, missions: Mission[], ref?: string): Mission | null {
+  if (ref) {
+    const idx = /^\d+$/.test(ref) ? parseInt(ref, 10) - 1 : missions.findIndex((m) => m.id === ref);
+    return missions[idx] ?? null;
+  }
+  const statusOf = (m: Mission) => player.missions[m.id]?.status ?? (m.prereq?.length ? "locked" : "available");
+  return missions.find((m) => statusOf(m) === "active") ?? missions.find((m) => statusOf(m) === "available") ?? null;
+}
+
+/**
+ * Reveal the next paid hint for a mission and charge escalating credits
+ * (25, 50, 75, …). Pure mutation of player state so the terminal command and
+ * the Missions app share one implementation.
+ */
+export function revealMissionHint(player: PlayerState, missions: Mission[], ref?: string): HintResult {
+  const mission = resolveHintMission(player, missions, ref);
+  if (!mission) return { ok: false, error: "Brak aktywnego zlecenia. Zobacz `missions` i zacznij jedno." };
+  const ladder = hintLadder(mission);
+  if (ladder.length === 0) return { ok: false, error: `Zlecenie „${mission.title}” nie ma dodatkowych wskazówek.` };
+  player.hintsUsed ??= {};
+  const used = player.hintsUsed[mission.id] ?? 0;
+  if (used >= ladder.length) {
+    return { ok: false, error: `Wykorzystałeś wszystkie wskazówki do „${mission.title}”. Spróbuj polecenia tutorial.` };
+  }
+  const cost = 25 * (used + 1);
+  if (player.credits < cost) {
+    return { ok: false, error: `Ta wskazówka kosztuje ${cost} kr, a masz ${player.credits} kr.` };
+  }
+  player.credits -= cost;
+  player.hintsUsed[mission.id] = used + 1;
+  player.transactions.push({
+    id: `tx_hint_${mission.id}_${Date.now()}`,
+    ts: Date.now(),
+    amount: -cost,
+    balanceAfter: player.bankBalance,
+    memo: `Wskazówka: ${mission.title}`,
+  });
+  player.updatedAt = Date.now();
+  return { ok: true, text: ladder[used]!, cost, remaining: ladder.length - used - 1 };
 }
 
 export function makeMissionCtx(
@@ -95,6 +161,9 @@ export function makeMissionCtx(
     },
     eventIs: (kind, hostId) => !!event && event.kind === kind && (!hostId || event.hostId === hostId),
     suspicionBelow: (n) => player.suspicion.heat < n,
+    cctvViewed: (hostId, feedId) =>
+      (player.cctvViewed ?? []).includes(feedId ? `${hostId}:${feedId}` : hostId) ||
+      (!feedId && (player.cctvViewed ?? []).some((k) => k.startsWith(`${hostId}:`))),
   };
 }
 

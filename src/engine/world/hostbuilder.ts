@@ -3,7 +3,7 @@
 // per-user home directories and /var/log entries, then grafts custom files.
 
 import { makeDir, makeFile, type VDir } from "../fs/vfs";
-import type { FirewallRule, Host, LogEntry, Service, VGroup, VUser } from "../types";
+import type { CameraSystem, FirewallRule, Host, LogEntry, Service, VGroup, VUser } from "../types";
 import { sha256 } from "../util/hash";
 import { buildTree, graft, type TreeSpec } from "./fsbuilder";
 
@@ -28,6 +28,8 @@ export interface HostInit {
   homes?: Record<string, TreeSpec>;
   logs?: LogEntry[];
   motd?: string;
+  /** Optional camera subsystem for NVR hosts. */
+  cctv?: CameraSystem;
 }
 
 const DEFAULT_GROUPS: VGroup[] = [
@@ -171,6 +173,7 @@ export function linuxHost(init: HostInit): Host {
     packetLoss: init.packetLoss ?? 0,
     idsSensitivity: init.idsSensitivity ?? 0.3,
     fs: root,
+    cctv: init.cctv,
   };
 }
 

@@ -3,6 +3,7 @@
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef } from "react";
 import { useGame } from "@/store/gameStore";
+import { playSound } from "@/os/sound";
 import { registerTerminal } from "./terminalBridge";
 
 // xterm-based terminal with a full line editor: history, cursor movement,
@@ -222,6 +223,7 @@ export default function Terminal() {
         return;
       }
       if (ch < " ") return; // ignore other control chars
+      playSound("key");
       insert(ch);
     };
 

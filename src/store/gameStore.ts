@@ -15,6 +15,7 @@ import { bindLifecycle } from "@/lib/autosave/lifecycle";
 import { SaveManager, type Priority, type SaveStatus } from "@/lib/autosave/manager";
 import { validateSave } from "@/lib/autosave/progress";
 import type { PreparedSession } from "@/lib/autosave/session";
+import { playSound } from "@/os/sound";
 
 export type Backend = "cloud" | "local";
 
@@ -61,6 +62,9 @@ interface GameState {
 
   boot: (opts: BootOptions) => void;
   run: (line: string) => RunResult | null;
+  revealHint: (ref?: string) => void;
+  viewCamera: (hostId: string, feedId: string) => void;
+  saveFile: (path: string, content: string) => { ok: true } | { ok: false; error: string };
   mutate: (fn: (engine: GameEngine) => void, priority?: Priority) => void;
   complete: (line: string) => string[];
   applySettings: (partial: Partial<GameSettings>) => void;
@@ -146,6 +150,17 @@ export const useGame = create<GameState>((set, get) => {
       set({ ready: true });
 
       for (const n of prepared.notices) get().pushNote(n.kind, n.text);
+
+      // First-run nudge toward the built-in tutorial, shown once ever.
+      const engine = get().engine;
+      if (engine && !engine.player.tutorialSeen) {
+        engine.player.tutorialSeen = true;
+        setTimeout(() => {
+          get().pushNote("info", "Nowy w BLACKNET? Wpisz w terminalu `tutorial`, a `hint` da Ci wskazówkę do zlecenia.");
+        }, 1200);
+        manager.markDirty("normal");
+      }
+
       // Write the journal right away (new game / pending sync from last session).
       void manager.flush({ force: true, reason: "boot" });
     },
@@ -159,16 +174,72 @@ export const useGame = create<GameState>((set, get) => {
         void manager?.backup(`misja ${id.toUpperCase()} ukończona`);
         set({ celebrations: [...get().celebrations, { id: `${id}_${Date.now()}`, missionId: id }] });
       }
+      if (result.completedMissions.length) playSound("success");
       for (const id of result.newlyAvailable) {
         get().pushNote("info", `Nowe zlecenie dostępne: ${id.toUpperCase()}`);
       }
       if (result.alerted) {
         get().pushNote("alert", "⚠ Wykryto podejrzaną aktywność! Poziom alarmu rośnie.");
+        playSound("alarm");
       }
+      for (const tip of result.tips) get().pushNote("info", tip);
       set({ tick: get().tick + 1, lastExit: { code: result.code, at: Date.now() } });
       const milestone = result.completedMissions.length > 0 || result.newlyAvailable.length > 0 || result.sessionChanged;
       manager?.markDirty(milestone ? "high" : "normal", line);
       return result;
+    },
+
+    revealHint: (ref) => {
+      const engine = get().engine;
+      if (!engine) return;
+      const res = engine.revealHint(ref);
+      if (res.ok) {
+        get().pushNote("info", `💡 Wskazówka (−${res.cost} kr): ${res.text}`);
+        set({ tick: get().tick + 1 });
+        manager?.markDirty("high");
+      } else {
+        get().pushNote("alert", res.error ?? "Nie udało się pobrać wskazówki.");
+      }
+    },
+
+    viewCamera: (hostId, feedId) => {
+      const engine = get().engine;
+      if (!engine) return;
+      if (engine.viewCamera(hostId, feedId)) {
+        // Re-evaluate missions so a "watch the feed" objective can latch.
+        const result = engine.run("");
+        for (const id of result.completedMissions) {
+          get().pushNote("mission", `Ukończono zlecenie: ${id.toUpperCase()}`);
+          void manager?.backup(`misja ${id.toUpperCase()} ukończona`);
+          set({ celebrations: [...get().celebrations, { id: `${id}_${Date.now()}`, missionId: id }] });
+        }
+        if (result.completedMissions.length) playSound("success");
+        for (const id of result.newlyAvailable) {
+          get().pushNote("info", `Nowe zlecenie dostępne: ${id.toUpperCase()}`);
+        }
+        set({ tick: get().tick + 1 });
+        manager?.markDirty("high");
+      }
+    },
+
+    saveFile: (path, content) => {
+      const engine = get().engine;
+      if (!engine) return { ok: false, error: "Silnik nie jest gotowy." };
+      const res = engine.fsWrite(path, content);
+      if (!res.ok) return res;
+      // Re-run mission evaluation so file-based objectives latch on save.
+      const result = engine.run("");
+      for (const id of result.completedMissions) {
+        get().pushNote("mission", `Ukończono zlecenie: ${id.toUpperCase()}`);
+        void manager?.backup(`misja ${id.toUpperCase()} ukończona`);
+        set({ celebrations: [...get().celebrations, { id: `${id}_${Date.now()}`, missionId: id }] });
+      }
+      if (result.completedMissions.length) playSound("success");
+      for (const id of result.newlyAvailable) get().pushNote("info", `Nowe zlecenie dostępne: ${id.toUpperCase()}`);
+      engine.player.updatedAt = Date.now();
+      set({ tick: get().tick + 1 });
+      manager?.markDirty("high", `edit ${path}`);
+      return { ok: true };
     },
 
     mutate: (fn, priority = "high") => {

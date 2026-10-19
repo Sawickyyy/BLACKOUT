@@ -281,6 +281,7 @@ function entryMenu(e: Entry, dir: string, open: () => void, runHere: (c: string)
   }
   return [
     { id: "open", label: (e.mode & 0o200) !== 0 ? "Otwórz / edytuj" : "Podgląd", icon: <Eye size={14} />, onSelect: open },
+    { id: "editor", label: "Otwórz w edytorze", icon: <FileCode2 size={14} />, onSelect: () => useOS.getState().openFile(path) },
     { id: "cat", label: "Wyświetl (cat)", icon: <Terminal size={14} />, onSelect: () => runHere(`cat ${e.name}`) },
     { id: "path", label: "Kopiuj ścieżkę", icon: <Clipboard size={14} />, onSelect: copyPath },
   ];

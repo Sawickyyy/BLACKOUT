@@ -17,6 +17,8 @@ export interface UiPrefs {
   bootAnimation: boolean;
   /** Ambient wallpaper motion and decorative effects. */
   ambient: boolean;
+  /** Subtle UI/game sound effects (keyboard, alarm, mission complete). */
+  sound: boolean;
 }
 
 export const DEFAULT_PREFS: UiPrefs = {
@@ -26,6 +28,9 @@ export const DEFAULT_PREFS: UiPrefs = {
   contrast: "normal",
   bootAnimation: true,
   ambient: true,
+  // On by default on pointer devices; the hydrate step mutes phones unless the
+  // player has explicitly chosen a value.
+  sound: true,
 };
 
 const KEY = "blacknet:ui";
@@ -33,7 +38,13 @@ const KEY = "blacknet:ui";
 function load(): UiPrefs {
   try {
     const raw = typeof window !== "undefined" ? window.localStorage.getItem(KEY) : null;
-    if (!raw) return DEFAULT_PREFS;
+    if (!raw) {
+      // First run: mute sound on touch-first / small screens, keep it on elsewhere.
+      const mobile =
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(max-width: 899px), (pointer: coarse)")?.matches;
+      return { ...DEFAULT_PREFS, sound: !mobile };
+    }
     const parsed = JSON.parse(raw) as Partial<UiPrefs>;
     return { ...DEFAULT_PREFS, ...parsed };
   } catch {
@@ -57,8 +68,8 @@ function persist(p: UiPrefs) {
 }
 
 function pick(s: PrefsState): UiPrefs {
-  const { glassAlpha, blur, scale, contrast, bootAnimation, ambient } = s;
-  return { glassAlpha, blur, scale, contrast, bootAnimation, ambient };
+  const { glassAlpha, blur, scale, contrast, bootAnimation, ambient, sound } = s;
+  return { glassAlpha, blur, scale, contrast, bootAnimation, ambient, sound };
 }
 
 export const usePrefs = create<PrefsState>((set, get) => ({

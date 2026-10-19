@@ -4,6 +4,7 @@
 
 import { bankDeposit, bankWithdraw, buyItem, STORE } from "../../economy";
 import { MISSIONS } from "../../missions/defs";
+import { revealMissionHint } from "../../missions/engine";
 import type { MissionStatus } from "../../types";
 import { parseArgs } from "./args";
 import { err, ok, type CommandSpec } from "../context";
@@ -180,4 +181,109 @@ const hosts: CommandSpec = {
   },
 };
 
-export const gameCommands: CommandSpec[] = [missions, mission, wallet, store, buy, bank, hosts];
+const hint: CommandSpec = {
+  name: "hint",
+  summary: "kup wskazówkę do aktywnego zlecenia (koszt rośnie)",
+  usage: "hint [numer|id zlecenia]",
+  run: (ctx, io) => {
+    const res = revealMissionHint(ctx.player, MISSIONS, io.argv[0]);
+    if (!res.ok) return err(res.error ?? "Nie udało się pobrać wskazówki.");
+    ctx.emit({ kind: "hint", data: { cost: res.cost } });
+    const tail =
+      res.remaining && res.remaining > 0
+        ? `(pozostało wskazówek: ${res.remaining} — wpisz hint ponownie, kolejna będzie droższa)`
+        : "(to była ostatnia wskazówka do tego zlecenia)";
+    return ok(`💡 Wskazówka (−${res.cost} kr):\n   ${res.text}\n${tail}\n`);
+  },
+};
+
+const TUTORIAL: Record<string, string> = {
+  "": [
+    "SAMOUCZEK BLACKNET  —  wpisz `tutorial <temat>`",
+    "═══════════════════════════════════════════════",
+    "Dostępne tematy:",
+    "  tutorial potoki       — łączenie poleceń znakiem |",
+    "  tutorial przekierowania — zapisywanie wyniku do pliku (> >> <)",
+    "  tutorial zwiad        — jak znaleźć i zmapować host",
+    "  tutorial dostep       — logowanie przez ssh",
+    "",
+    "Utknąłeś w zleceniu? Wpisz `hint`, aby dostać wskazówkę (za kredyty).",
+  ].join("\n"),
+  potoki: [
+    "POTOKI  (pipe, znak |)",
+    "──────────────────────",
+    "Znak | przekazuje wynik jednego polecenia na wejście następnego.",
+    "",
+    "  cat /etc/passwd | grep root        # tylko wiersze z 'root'",
+    "  ls -la | wc -l                      # policz pliki w katalogu",
+    "  cat auth.log | grep Failed | sort | uniq   # unikalne nieudane logowania",
+    "",
+    "Każdy element potoku to osobne polecenie — łącz je dowolnie.",
+  ].join("\n"),
+  przekierowania: [
+    "PRZEKIEROWANIA  ( >  >>  < )",
+    "────────────────────────────",
+    "  echo tekst > plik.txt      # zapisz wynik do pliku (nadpisuje)",
+    "  echo wiersz >> plik.txt    # dopisz na końcu pliku",
+    "  sha256sum < plik.txt       # podaj plik na wejście polecenia",
+    "",
+    "Łączenie z potokiem:",
+    "  curl http://host/dane | grep token > token.txt",
+    "",
+    "Wiele zleceń wymaga zapisania znaleziska do pliku — użyj właśnie `>`.",
+  ].join("\n"),
+  zwiad: [
+    "ZWIAD  (rozpoznanie celu)",
+    "─────────────────────────",
+    "  nslookup domena.example         # zamień nazwę na adres IP",
+    "  ping -c3 host                   # sprawdź, czy host odpowiada",
+    "  nmap -sV host                   # wykryj otwarte porty i wersje usług",
+    "  curl http://host/               # pobierz stronę WWW",
+    "",
+    "Odkryte hosty pojawią się w aplikacji „Sieć” oraz w poleceniu `hosts`.",
+  ].join("\n"),
+  dostep: [
+    "DOSTĘP  (logowanie ssh)",
+    "───────────────────────",
+    "  ssh uzytkownik@host --password 'hasło'",
+    "",
+    "Jeśli hasło zawiera znaki $ ! # — OBOWIĄZKOWO weź je w apostrofy '',",
+    "inaczej powłoka potraktuje np. $Deploy jak zmienną i wyśle złe hasło.",
+    "Po zalogowaniu polecenia działają na zdalnym hoście; `exit` wraca z powrotem.",
+  ].join("\n"),
+};
+
+const tutorial: CommandSpec = {
+  name: "tutorial",
+  summary: "mini-kurs: potoki, przekierowania, zwiad, dostęp",
+  usage: "tutorial [potoki|przekierowania|zwiad|dostep]",
+  run: (_ctx, io) => {
+    const topic = (io.argv[0] ?? "").toLowerCase().replace(/[łŁ]/g, "l");
+    const page = TUTORIAL[topic];
+    if (page === undefined) {
+      return ok(TUTORIAL[""]! + `\n\n(nie znam tematu „${io.argv[0]}”)\n`);
+    }
+    return ok(page + "\n");
+  },
+};
+
+const cameras: CommandSpec = {
+  name: "cameras",
+  summary: "lista kamer dostępnych na bieżącym hoście (NVR)",
+  usage: "cameras",
+  run: (ctx) => {
+    const host = ctx.host;
+    if (!host.cctv) return err("Na tym hoście nie ma systemu kamer.");
+    const acc = ctx.player.accessByHost[host.id] ?? [];
+    const need = host.cctv.requiresUser;
+    if (need && !acc.includes(need) && !acc.includes("root")) {
+      return err(`Brak dostępu do podglądu. Wymagane konto: ${need}.`);
+    }
+    const lines = [`KAMERY — ${host.cctv.label}`, "═".repeat(24)];
+    host.cctv.feeds.forEach((f, i) => lines.push(`${String(i + 1).padStart(2)}. ${f.name}${f.zone ? `  (${f.zone})` : ""}`));
+    lines.push("", "Podgląd obrazu otwórz w aplikacji CCTV (dock lub Ctrl+K → „CCTV”).");
+    return ok(lines.join("\n") + "\n");
+  },
+};
+
+export const gameCommands: CommandSpec[] = [missions, mission, wallet, store, buy, bank, hosts, hint, tutorial, cameras];

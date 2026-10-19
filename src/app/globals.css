@@ -292,3 +292,14 @@ body {
   padding-left: var(--sal);
   padding-right: var(--sar);
 }
+
+/* ── network: newly-discovered edge flow ────────────────────────────────────── */
+.os-edge-flow {
+  stroke-dasharray: 5 5;
+  animation: os-edge-dash 0.6s linear infinite;
+}
+@keyframes os-edge-dash {
+  to {
+    stroke-dashoffset: -10;
+  }
+}

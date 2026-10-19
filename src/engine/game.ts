@@ -8,8 +8,9 @@ import { applyDetection, decaySuspicion } from "./detection";
 import { VFS, type Principal } from "./fs/vfs";
 import { resolve as resolvePath } from "./fs/path";
 import { MISSIONS } from "./missions/defs";
-import { evaluateMissions } from "./missions/engine";
+import { evaluateMissions, revealMissionHint } from "./missions/engine";
 import { Network } from "./net/net";
+import { migrateSave } from "./world/migrate";
 import { buildRegistry, commandNames } from "./shell/commands/index";
 import { runLine } from "./shell/exec";
 import type { CommandRegistry, GameEvent, ShellContext } from "./shell/context";
@@ -24,6 +25,23 @@ export interface RunResult {
   newlyAvailable: string[];
   objectivesAdvanced: { mission: string; objective: string }[];
   alerted: boolean;
+  /** Gentle, context-aware onboarding tips (unknown command, repeated errors). */
+  tips: string[];
+}
+
+/** Levenshtein distance, for "did you mean" command suggestions. */
+function editDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) => [i, ...Array<number>(n).fill(0)]);
+  for (let j = 0; j <= n; j++) dp[0]![j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i]![j] = Math.min(dp[i - 1]![j]! + 1, dp[i]![j - 1]! + 1, dp[i - 1]![j - 1]! + cost);
+    }
+  }
+  return dp[m]![n]!;
 }
 
 export class GameEngine {
@@ -32,6 +50,8 @@ export class GameEngine {
   private net: Network;
   private lastExit = 0;
   private vfsCache = new Map<string, VFS>();
+  /** Count of consecutive failing command lines, for nudging a stuck player. */
+  private consecutiveErrors = 0;
 
   // Per-run accumulators populated by emitted events.
   private accCompleted = new Set<string>();
@@ -40,7 +60,9 @@ export class GameEngine {
   private accAlerted = false;
 
   constructor(save: SaveGame) {
-    this.save = save;
+    // Graft in any world content added since this save was created, so newer
+    // missions and their target hosts exist for returning players.
+    this.save = migrateSave(save);
     this.registry = buildRegistry();
     this.net = new Network(save.world);
     // Cool down suspicion for time elapsed while away.
@@ -170,7 +192,66 @@ export class GameEngine {
       newlyAvailable: [...this.accAvailable],
       objectivesAdvanced: this.accObjectives,
       alerted: this.accAlerted,
+      tips: this.onboardingTips(trimmed, outcome.code, outcome.stderr),
     };
+  }
+
+  /**
+   * Turn a failed command into a gentle, specific nudge: a "did you mean"
+   * suggestion for an unknown command, and — after a few failures in a row —
+   * a reminder that `hint` and `tutorial` exist. Progress (a completed
+   * objective) resets the streak so a learning player is never nagged.
+   */
+  private onboardingTips(line: string, code: number, stderr: string): string[] {
+    if (!line) return [];
+    const tips: string[] = [];
+    const advanced = this.accObjectives.length > 0 || this.accCompleted.size > 0;
+    if (code === 0 || advanced) {
+      this.consecutiveErrors = 0;
+      return [];
+    }
+    this.consecutiveErrors++;
+
+    // Unknown command → suggest the closest one we actually have.
+    const unknown = /^bash: ([^:]+): polecenie nieznalezione/.exec(stderr);
+    if (unknown) {
+      const typed = unknown[1]!;
+      let best: string | null = null;
+      let bestD = 3; // only suggest for close typos
+      for (const name of commandNames(this.registry)) {
+        const d = editDistance(typed, name);
+        if (d < bestD) {
+          bestD = d;
+          best = name;
+        }
+      }
+      tips.push(
+        best
+          ? `Nie znam polecenia „${typed}”. Może chodziło o „${best}”? Pełna lista: wpisz help.`
+          : `Nie znam polecenia „${typed}”. Wpisz help, aby zobaczyć dostępne polecenia.`,
+      );
+    }
+
+    if (this.consecutiveErrors >= 3) {
+      tips.push("Kilka prób nie wyszło. Wpisz hint po wskazówkę do aktywnego zlecenia albo tutorial po mini-kurs.");
+      this.consecutiveErrors = 0;
+    }
+    return tips;
+  }
+
+  /** Reveal the next paid hint for a mission (delegates to the shared logic). */
+  revealHint(ref?: string) {
+    return revealMissionHint(this.player, MISSIONS, ref);
+  }
+
+  /** Record that the player opened a camera feed; returns true if it was new. */
+  viewCamera(hostId: string, feedId: string): boolean {
+    this.player.cctvViewed ??= [];
+    const key = `${hostId}:${feedId}`;
+    if (this.player.cctvViewed.includes(key)) return false;
+    this.player.cctvViewed.push(key);
+    this.player.updatedAt = Date.now();
+    return true;
   }
 
   /** The shell prompt string for the current session. */
@@ -314,6 +395,22 @@ export class GameEngine {
       .scan(local, host, ports)
       .filter((r) => r.state === "open")
       .map((r) => ({ port: r.port, proto: r.proto, service: r.service, version: r.version }));
+  }
+
+  /**
+   * Camera systems the player can actually watch: NVR hosts they hold the
+   * required operator account on. Returned read-only for the CCTV app.
+   */
+  cctvSystems(): { hostId: string; hostname: string; org?: string; system: Host["cctv"] }[] {
+    const out: { hostId: string; hostname: string; org?: string; system: Host["cctv"] }[] = [];
+    for (const host of Object.values(this.world.hosts)) {
+      if (!host.cctv) continue;
+      const acc = this.player.accessByHost[host.id] ?? [];
+      const need = host.cctv.requiresUser;
+      if (need && !acc.includes(need) && !acc.includes("root")) continue;
+      out.push({ hostId: host.id, hostname: host.hostname, org: host.org, system: host.cctv });
+    }
+    return out;
   }
 
   /** Serialize for persistence. */

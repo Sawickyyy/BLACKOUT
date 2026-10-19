@@ -41,12 +41,20 @@ iPhonie (szczegóły: `docs/REDESIGN.md`).
   z parsowaniem `/etc/sudoers` (realna eskalacja uprawnień).
 - **Symulowana sieć** — hosty, porty, usługi z banerami, DNS (A/CNAME/MX/TXT),
   firewalle, opóźnienia, utrata pakietów; `nmap`, `nc`, `curl`, `ssh`, `ping`…
-- **Fikcyjny internet** — 14 hostów w 10 organizacjach (firma technologiczna,
+- **Fikcyjny internet** — 15 hostów w 11 organizacjach (firma technologiczna,
   bank, uczelnia, hosting, urząd, serwis informacyjny, podziemne forum, wroga
-  grupa hakerska), każdy ze spójną strukturą plików, kontami i politykami.
-- **20 w pełni grywalnych misji** o rosnącej złożoności, z narracją, celami,
+  grupa hakerska, firma dozoru wizyjnego), każdy ze spójną strukturą plików,
+  kontami i politykami.
+- **22 w pełni grywalne misje** o rosnącej złożoności, z narracją, celami,
   nagrodami i trwałymi konsekwencjami. Każdy cel osiągasz prawdziwymi komendami
-  — nie ma „przycisku Hack".
+  — nie ma „przycisku Hack". W tym pełny wątek **włamania do kamer CCTV**:
+  odkrywasz rejestrator NVR, zdobywasz dostęp i naprawdę oglądasz obraz z kamer.
+- **Podgląd kamer (CCTV)** — po przejęciu rejestratora przełączasz kamery,
+  przewijasz oś czasu nagrań, robisz zrzuty i odczytujesz szczegóły (tablice,
+  czasy, kody) wprost z obrazu — a nie z komunikatu „ACCESS GRANTED".
+- **Wbudowany onboarding** — mini-kurs `tutorial` (potoki, przekierowania,
+  zwiad, dostęp), płatne wskazówki `hint` do aktywnego zlecenia oraz kontekstowe
+  podpowiedzi po błędach (np. „czy chodziło o `ls`?").
 - **Systemy wykrywania** — IDS, logi uwierzytelniania, poziom podejrzeń rosnący
   na podstawie realnych akcji (skan jest głośny, czytanie własnego pliku ciche).
 - **Ekonomia** — konto bankowe, transakcje, sklep z narzędziami i sprzętem,
@@ -57,7 +65,9 @@ iPhonie (szczegóły: `docs/REDESIGN.md`).
 - **Mobile-first** — responsywny układ, pasek klawiszy dotykowych (Tab, Ctrl-C,
   strzałki), obsługa safe-area iPhone, dolna nawigacja, PWA (instalacja + offline).
 - **Styl cyberpunk** — trzy motywy (zielony/bursztyn/niebieski), efekt CRT,
-  wizualizacja topologii sieci, wirtualna przeglądarka, edytor plików (Monaco).
+  interaktywna mapa sieci jako graf (z animacją nowego odkrycia), wirtualna
+  przeglądarka, edytor plików (Monaco), syntezowane efekty dźwiękowe
+  (klawiatura, alarm, ukończenie zlecenia; domyślnie wyciszone na telefonie).
 
 ## Stos technologiczny
 
@@ -76,7 +86,7 @@ src/engine/            # Silnik (czysty TS, bez zależności od DOM)
   shell/               #   tokenizer, parser, egzekutor, komendy, sudoers
     commands/          #     fs, system, net, sec, util, game
   net/                 #   symulacja sieci (DNS, firewall, porty, usługi)
-  missions/            #   silnik misji + 20 definicji
+  missions/            #   silnik misji + 22 definicje (z wątkiem CCTV)
   world/               #   budowniczowie hostów + seed fikcyjnego internetu
   economy.ts           #   sklep, bank
   detection.ts         #   IDS / poziom podejrzeń
@@ -112,11 +122,11 @@ pnpm start          # serwer produkcyjny
 
 ```bash
 pnpm test           # testy jednostkowe (Vitest) — silnik, parser, VFS, sieć,
-                    #   misje, ekonomia, persystencja, pełne przejście 20 misji
+                    #   misje, ekonomia, persystencja, pełne przejście 22 misji
 pnpm test:e2e       # testy E2E (Playwright) — rejestracja, gra, zapis, wznowienie
 ```
 
-Testy jednostkowe obejmują m.in. **pełne, skryptowane przejście wszystkich 20
+Testy jednostkowe obejmują m.in. **pełne, skryptowane przejście wszystkich 22
 misji** wyłącznie prawdziwymi komendami — to dowód, że gra jest przechodzalna.
 
 ## Jak grać
@@ -152,7 +162,7 @@ obsługiwanymi flagami (inne flagi mogą być ignorowane).
 | Bezpieczeństwo | `nmap` (-p -sV), `nc` (-z) |
 | Narzędzia | `man`, `help`, `which`, `whereis`, `wc` (-l -w -c), `sort` (-r -n -u), `uniq` (-c), `cut` (-d -f), `sed` (`s/…/…/[gi]`), `awk` (`{print $n}`, -F), `tar` (-c -x -t -f -z), `gzip`/`gunzip` (-d), `base64` (-d), `sha256sum` |
 | Uprawnienia | `sudo` (-l, -s, `sudo <cmd>`), `su` |
-| Gra | `missions`, `mission`, `wallet`, `store`, `buy`, `bank`, `hosts` |
+| Gra | `missions`, `mission`, `wallet`, `store`, `buy`, `bank`, `hosts`, `hint`, `tutorial`, `cameras` |
 
 Funkcje powłoki: potoki, przekierowania (`> >> < 2> 2>> &>`), `&&`/`||`/`;`,
 rozwijanie zmiennych (`$VAR`, `${VAR}`, `$?`), cudzysłowy pojedyncze/podwójne,

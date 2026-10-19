@@ -2,8 +2,8 @@
 // session opens offline. Navigation uses network-first (fresh when online,
 // cached shell when not); other GETs use stale-while-revalidate.
 
-const CACHE = "blacknet-v1";
-const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
+const CACHE = "blacknet-v2";
+const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

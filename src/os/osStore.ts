@@ -16,12 +16,14 @@ interface OSState {
   /** Pending navigation for apps; `nonce` makes repeated requests distinct. */
   browserRequest: { url: string; nonce: number } | null;
   filesRequest: { path: string; nonce: number } | null;
+  editorRequest: { path: string; nonce: number } | null;
   /** Implemented by the active shell (desktop opens a window, phone switches app). */
   launch: (id: AppId) => void;
   setLauncher: (fn: (id: AppId) => void) => void;
   set: (patch: Partial<Omit<OSState, "set" | "launch" | "setLauncher">>) => void;
   openUrl: (url: string) => void;
   openFolder: (path: string) => void;
+  openFile: (path: string) => void;
 }
 
 export const useOS = create<OSState>((set, get) => ({
@@ -31,6 +33,7 @@ export const useOS = create<OSState>((set, get) => ({
   launcherOpen: false,
   browserRequest: null,
   filesRequest: null,
+  editorRequest: null,
   launch: () => undefined,
   setLauncher: (fn) => set({ launch: fn }),
   set: (patch) => set(patch),
@@ -41,5 +44,9 @@ export const useOS = create<OSState>((set, get) => ({
   openFolder: (path) => {
     set({ filesRequest: { path, nonce: Date.now() } });
     get().launch("files");
+  },
+  openFile: (path) => {
+    set({ editorRequest: { path, nonce: Date.now() } });
+    get().launch("editor");
   },
 }));

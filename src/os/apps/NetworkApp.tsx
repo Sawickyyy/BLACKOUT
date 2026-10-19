@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Crosshair, Globe, Lock, Radar, Server, ShieldCheck, Unlock, Wifi } from "lucide-react";
 import type { Host } from "@/engine/types";
 import { focusTerminal, sendToTerminal } from "@/components/terminalBridge";
@@ -152,6 +152,25 @@ export default function NetworkApp({ mobile }: { mobile: boolean }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- recompute on discovery/access changes
   const nodes = useMemo(() => layout(engine), [engine, engine.player.discovered.length, tick]);
   const [selected, setSelected] = useState<string | null>(null);
+
+  // Highlight hosts discovered since this app last rendered them, with a short
+  // pulse so a newly-appeared node is obvious.
+  const seen = useRef<Set<string> | null>(null);
+  const [pulsing, setPulsing] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const ids = nodes.map((n) => n.host.id);
+    if (seen.current === null) {
+      seen.current = new Set(ids); // first mount: nothing is "new"
+      return;
+    }
+    const fresh = ids.filter((id) => !seen.current!.has(id));
+    if (fresh.length) {
+      fresh.forEach((id) => seen.current!.add(id));
+      setPulsing(new Set(fresh));
+      const t = setTimeout(() => setPulsing(new Set()), 4200);
+      return () => clearTimeout(t);
+    }
+  }, [nodes]);
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
   const drag = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
   const moved = useRef(false);
@@ -215,9 +234,21 @@ export default function NetworkApp({ mobile }: { mobile: boolean }) {
       <div className="os-grid absolute inset-0 opacity-40" aria-hidden />
       <svg className="absolute left-1/2 top-1/2 h-0 w-0 overflow-visible" aria-hidden>
         <g style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}>
-          {nodes.filter((n) => !n.isLocal).map((n) => (
-            <line key={`l-${n.host.id}`} x1={0} y1={0} x2={n.x} y2={n.y} stroke="rgb(var(--line) / 0.14)" strokeWidth={1} />
-          ))}
+          {nodes.filter((n) => !n.isLocal).map((n) => {
+            const fresh = pulsing.has(n.host.id);
+            return (
+              <line
+                key={`l-${n.host.id}`}
+                x1={0}
+                y1={0}
+                x2={n.x}
+                y2={n.y}
+                stroke={fresh ? "rgb(var(--accent) / 0.8)" : n.access ? "rgb(var(--ok) / 0.3)" : "rgb(var(--line) / 0.14)"}
+                strokeWidth={fresh ? 2 : 1}
+                className={fresh ? "os-edge-flow" : undefined}
+              />
+            );
+          })}
         </g>
       </svg>
       <div
@@ -226,6 +257,7 @@ export default function NetworkApp({ mobile }: { mobile: boolean }) {
       >
         {nodes.map((n) => {
           const active = selected === n.host.id;
+          const fresh = pulsing.has(n.host.id);
           const Icon = n.isLocal ? Crosshair : n.access ? Unlock : Server;
           return (
             <button
@@ -233,11 +265,17 @@ export default function NetworkApp({ mobile }: { mobile: boolean }) {
               onClick={() => {
                 if (!moved.current) setSelected(n.host.id);
               }}
-              aria-label={`${n.host.hostname}${n.access ? ", dostęp uzyskany" : ""}`}
+              aria-label={`${n.host.hostname}${n.access ? ", dostęp uzyskany" : ""}${fresh ? ", nowo odkryty" : ""}`}
               aria-pressed={active}
               className="absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 outline-none"
               style={{ left: n.x, top: n.y }}
             >
+              {fresh && (
+                <span
+                  aria-hidden
+                  className="absolute left-1/2 top-[14px] h-10 w-10 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-2xl border-2 border-accent/70"
+                />
+              )}
               <span
                 className={`flex items-center justify-center rounded-2xl border transition-[transform,box-shadow,border-color] duration-base ${
                   n.isLocal ? "h-12 w-12" : "h-10 w-10"

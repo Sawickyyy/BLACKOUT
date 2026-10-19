@@ -101,7 +101,20 @@ describe("full playthrough", () => {
     // M20 — finale
     run("echo 'BLACKNET operacja zamknieta, wezel 192.0.2.200' > raport_koncowy.txt");
 
-    const ids = Array.from({ length: 20 }, (_, i) => `m${String(i + 1).padStart(2, "0")}`);
+    // M21 — CCTV: take over the Vertex NVR and watch the feeds.
+    run("nmap -sV nvr.vertex-sec.example");
+    run("curl http://nvr.vertex-sec.example:8080/device.json");
+    run("ssh cctv@nvr.vertex-sec.example --password cctv1234");
+    run("exit");
+    g.viewCamera("vertex-nvr", "cam1");
+    run("echo 'WX 8831K' > vertex_tablica.txt");
+
+    // M22 — follow-up: read the lobby timeline + the server-room code.
+    g.viewCamera("vertex-nvr", "cam2");
+    run("echo 02:11 > vertex_czas.txt");
+    run("echo VX-7731 > vertex_kod.txt");
+
+    const ids = Array.from({ length: 22 }, (_, i) => `m${String(i + 1).padStart(2, "0")}`);
     const incomplete = ids.filter((id) => g.player.missions[id]?.status !== "completed");
     expect(incomplete).toEqual([]);
   });

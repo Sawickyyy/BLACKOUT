@@ -38,6 +38,11 @@ export const MISSIONS: Mission[] = [
       "Zapoznaj się ze swoim terminalem. Przeczytaj README, sprawdź tożsamość i stwórz pierwszy plik.\n" +
       "Podpowiedź: `cat README.txt`, `whoami`, `help`, a potem `touch pierwszy.txt`.",
     reward: { credits: 100, skills: { recon: 1 } },
+    hints: [
+      "Wpisz `ls`, aby zobaczyć pliki, a potem `cat README.txt`, aby przeczytać instrukcję.",
+      "`whoami` pokazuje, jako kto pracujesz. `help` wypisuje wszystkie polecenia.",
+      "Nowy pusty plik tworzysz poleceniem `touch pierwszy.txt`.",
+    ],
     objectives: [
       { id: "readme", label: "Przeczytaj README.txt", check: (mc) => mc.ranCommand("cat", "README") },
       { id: "whoami", label: "Sprawdź tożsamość (whoami)", check: (mc) => mc.ranCommand("whoami") },
@@ -110,6 +115,11 @@ export const MISSIONS: Mission[] = [
       "Podpowiedź: `ssh deploy@www.aurora.example --password 'Aur0ra$Deploy!'`\n" +
       "(apostrofy są ważne — bez nich powłoka potraktuje $Deploy jako zmienną).",
     reward: { credits: 300, skills: { exploitation: 2 }, reputation: [{ org: "aurora", amount: -5 }] },
+    hints: [
+      "Hasło konta deploy znalazłeś w /backup/deploy.yml (misja „Ukryte ścieżki”): Aur0ra$Deploy!",
+      "Zaloguj się: `ssh deploy@www.aurora.example --password 'Aur0ra$Deploy!'`",
+      "Hasło MUSI być w apostrofach — bez nich powłoka potraktuje $Deploy jako zmienną i wyśle złe hasło.",
+    ],
     objectives: [
       { id: "ssh", label: "Zaloguj się jako deploy", check: (mc) => mc.hasAccess("aurora-web", "deploy") },
     ],
@@ -426,6 +436,77 @@ export const MISSIONS: Mission[] = [
         check: (mc) =>
           mc.fileContains("local", "/home/operator/raport_koncowy.txt", "BLACKNET") &&
           mc.fileContains("local", "/home/operator/raport_koncowy.txt", "192.0.2.200"),
+      },
+    ],
+  },
+  {
+    id: "m21",
+    title: "Oko w sieci",
+    org: "vertex",
+    difficulty: 3,
+    prereq: ["m02"],
+    brief:
+      "Klient zgłasza, że firma Vertex Security zostawiła rejestrator kamer (NVR) wystawiony\n" +
+      "do internetu. Twój cel: domena vertex-sec.example. Odkryj urządzenie, ustal sposób\n" +
+      "dostępu, zaloguj się i URUCHOM PODGLĄD. W nocy pod rampę podjechał nieznany dostawczak —\n" +
+      "znajdź na nagraniu jego tablicę rejestracyjną i zapisz ją do vertex_tablica.txt.\n" +
+      "Dostępu i tablicy nie dostajesz za darmo — musisz je zdobyć i odczytać z obrazu.",
+    reward: { credits: 450, skills: { recon: 1, exploitation: 1 }, reputation: [{ org: "vertex", amount: 5 }] },
+    hints: [
+      "Zacznij jak zwykle od zwiadu: `nslookup vertex-sec.example`, potem `nmap -sV nvr.vertex-sec.example`.",
+      "Panel NVR działa na porcie 8080. Sprawdź, co serwuje: `curl http://nvr.vertex-sec.example:8080/device.json` — producenci zostawiają tam model i konto serwisowe.",
+      "Konto operatora `cctv` ma hasło fabryczne `cctv1234`. Wejdź: `ssh cctv@nvr.vertex-sec.example --password cctv1234`.",
+      "Po zalogowaniu otwórz aplikację CCTV (dock albo paleta poleceń Ctrl+K → „CCTV”). Wybierz kamerę „Parking P1” i przewiń oś czasu na ~02:14, aż zobaczysz dostawczak. Odczytaj tablicę z nakładki i zapisz: `echo 'WX 8831K' > vertex_tablica.txt`.",
+    ],
+    objectives: [
+      { id: "scan", label: "Odkryj rejestrator NVR (nmap)", check: (mc) => mc.discovered("vertex-nvr") },
+      {
+        id: "device",
+        label: "Pobierz dane urządzenia (device.json)",
+        check: httpObj("vertex-nvr", "device.json"),
+        hint: "curl http://nvr.vertex-sec.example:8080/device.json",
+      },
+      { id: "ssh", label: "Zaloguj się jako operator cctv", check: (mc) => mc.hasAccess("vertex-nvr", "cctv") },
+      {
+        id: "watch",
+        label: "Uruchom podgląd kamery Parking P1",
+        check: (mc) => mc.cctvViewed("vertex-nvr", "cam1"),
+        hint: "Otwórz aplikację CCTV i wybierz kamerę Parking P1.",
+      },
+      {
+        id: "plate",
+        label: "Zapisz tablicę dostawczaka do vertex_tablica.txt",
+        check: (mc) => mc.fileContains("local", "/home/operator/vertex_tablica.txt", "WX 8831K"),
+      },
+    ],
+  },
+  {
+    id: "m22",
+    title: "Nocny gość",
+    org: "vertex",
+    difficulty: 3,
+    prereq: ["m21"],
+    brief:
+      "Masz już dostęp do rejestratora Vertex. Tej samej nocy ktoś wszedł do budynku bez karty.\n" +
+      "Przejrzyj kamerę w lobby, ustal dokładny czas wejścia intruza i zapisz go (format GG:MM)\n" +
+      "do vertex_czas.txt. Zbuduj też kod serwisowy widoczny w serwerowni do vertex_kod.txt.",
+    reward: { credits: 400, skills: { forensics: 2 }, reputation: [{ org: "vertex", amount: 8 }] },
+    hints: [
+      "Otwórz aplikację CCTV, kamera „Lobby”. Przewiń oś czasu na okolice 02:00 i obserwuj, kiedy ktoś wchodzi.",
+      "Osoba wchodzi o 02:11. Zapisz: `echo 02:11 > vertex_czas.txt`.",
+      "Kamera „Serwerownia” pokazuje tablicę z kodem serwisowym VX-7731 (ok. 02:23). Zapisz: `echo VX-7731 > vertex_kod.txt`.",
+    ],
+    objectives: [
+      { id: "lobby", label: "Przejrzyj kamerę Lobby", check: (mc) => mc.cctvViewed("vertex-nvr", "cam2") },
+      {
+        id: "time",
+        label: "Zapisz czas wejścia do vertex_czas.txt",
+        check: (mc) => mc.fileContains("local", "/home/operator/vertex_czas.txt", "02:11"),
+      },
+      {
+        id: "code",
+        label: "Zapisz kod serwisowy do vertex_kod.txt",
+        check: (mc) => mc.fileContains("local", "/home/operator/vertex_kod.txt", "VX-7731"),
       },
     ],
   },

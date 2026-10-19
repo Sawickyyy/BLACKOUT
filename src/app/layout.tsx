@@ -19,10 +19,23 @@ export const metadata: Metadata = {
     title: "BLACKNET",
   },
   icons: {
-    icon: "/icon.svg",
-    apple: "/icon.svg",
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
+
+// iOS standalone launch images (apple-touch-startup-image). Each matches a
+// device's physical resolution; iOS picks the one whose media query fits.
+const APPLE_SPLASH: { href: string; w: number; h: number; ratio: number }[] = [
+  { href: "/icons/apple-splash-1125-2436.png", w: 375, h: 812, ratio: 3 },
+  { href: "/icons/apple-splash-1170-2532.png", w: 390, h: 844, ratio: 3 },
+  { href: "/icons/apple-splash-1179-2556.png", w: 393, h: 852, ratio: 3 },
+  { href: "/icons/apple-splash-1290-2796.png", w: 430, h: 932, ratio: 3 },
+];
 
 export const viewport: Viewport = {
   themeColor: "#070B10",
@@ -37,6 +50,16 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pl" data-theme="green" data-contrast="normal" data-motion="full" data-scale="100">
+      <head>
+        {APPLE_SPLASH.map((s) => (
+          <link
+            key={s.href}
+            rel="apple-touch-startup-image"
+            href={s.href}
+            media={`(device-width: ${s.w}px) and (device-height: ${s.h}px) and (-webkit-device-pixel-ratio: ${s.ratio}) and (orientation: portrait)`}
+          />
+        ))}
+      </head>
       <body>{children}</body>
     </html>
   );

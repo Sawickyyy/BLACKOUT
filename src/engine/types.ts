@@ -66,6 +66,37 @@ export interface LogEntry {
   message: string;
 }
 
+/** A timestamped happening on a camera's timeline (seconds into a looping day). */
+export interface CameraEvent {
+  /** Seconds into the 24h loop (0..86399) when this becomes visible. */
+  at: number;
+  /** How long the happening stays on screen, in seconds. */
+  duration: number;
+  /** What the operator notes in the event log. */
+  label: string;
+  /** A concrete detail drawn into the frame (plate, code, face tag) to be found. */
+  detail?: string;
+}
+
+/** A single simulated CCTV feed. Rendered procedurally — no real footage. */
+export interface CameraFeed {
+  id: string;
+  name: string;
+  /** Picks the procedural backdrop drawn on the canvas. */
+  scene: "parking" | "lobby" | "server" | "dock" | "corridor" | "offline";
+  /** Area/zone label shown in the on-screen overlay. */
+  zone?: string;
+  events: CameraEvent[];
+}
+
+/** A network video recorder exposing a set of feeds once the player has access. */
+export interface CameraSystem {
+  label: string;
+  /** Account on this host the player must hold to open the live view. */
+  requiresUser?: string;
+  feeds: CameraFeed[];
+}
+
 export interface Host {
   id: string;
   hostname: string;
@@ -91,6 +122,8 @@ export interface Host {
   idsSensitivity: number;
   /** Whether the player currently holds a shell here and as which user. */
   reachable?: boolean;
+  /** Optional camera subsystem (NVR hosts) viewable in the CCTV app. */
+  cctv?: CameraSystem;
 }
 
 export interface DnsRecord {
@@ -174,6 +207,12 @@ export interface PlayerState {
   accessByHost: Record<string, string[]>;
   settings: GameSettings;
   terminalHistory: string[];
+  /** How many hints the player has unlocked per mission (paid, escalating). */
+  hintsUsed?: Record<string, number>;
+  /** Whether the first-run tutorial prompt has been shown. */
+  tutorialSeen?: boolean;
+  /** Camera feeds the player has actually opened, as "hostId:feedId" keys. */
+  cctvViewed?: string[];
   createdAt: number;
   updatedAt: number;
 }
