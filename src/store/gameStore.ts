@@ -1,15 +1,20 @@
 "use client";
 
 // Zustand store bridging the pure GameEngine to React. It owns the engine
-// instance, bumps a `tick` after every mutation so panels re-render, and
-// debounces autosave to the active backend (cloud or local).
+// instance, bumps a `tick` after every mutation so panels re-render, and hands
+// every change to the SaveManager (src/lib/autosave) with a priority: routine
+// edits are debounced, milestones (missions, purchases, host hops) save at once.
 
 import { create } from "zustand";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { GameEngine, type RunResult } from "@/engine/game";
 import type { GameSettings, SaveGame } from "@/engine/types";
+import { sha256 } from "@/engine/util/hash";
 import { newSaveGame } from "@/engine/world/seed";
-import { saveCloud, saveLocal, type SaveSlotMeta } from "@/lib/persistence";
+import { browserBackupStore, type BackupMeta, type BackupStore } from "@/lib/autosave/backups";
+import { bindLifecycle } from "@/lib/autosave/lifecycle";
+import { SaveManager, type Priority, type SaveStatus } from "@/lib/autosave/manager";
+import { validateSave } from "@/lib/autosave/progress";
+import type { PreparedSession } from "@/lib/autosave/session";
 
 export type Backend = "cloud" | "local";
 
@@ -20,14 +25,12 @@ export interface GameNote {
 }
 
 interface BootOptions {
-  save: SaveGame;
+  prepared: PreparedSession;
   userKey: string;
   backend: Backend;
   username: string;
   email?: string;
   slot?: number;
-  supabase?: SupabaseClient | null;
-  revision?: number;
 }
 
 interface GameState {
@@ -39,145 +42,220 @@ interface GameState {
   username: string;
   email?: string;
   slot: number;
-  supabase: SupabaseClient | null;
-  revision?: number;
-  saving: boolean;
-  lastSavedAt?: number;
+  saveStatus: SaveStatus | null;
+  /** Bumped whenever a backup is written, so lists can refresh. */
+  backupsVersion: number;
   notes: GameNote[];
 
   boot: (opts: BootOptions) => void;
   run: (line: string) => RunResult | null;
-  mutate: (fn: (engine: GameEngine) => void) => void;
+  mutate: (fn: (engine: GameEngine) => void, priority?: Priority) => void;
   complete: (line: string) => string[];
   applySettings: (partial: Partial<GameSettings>) => void;
-  scheduleSave: () => void;
   saveNow: () => Promise<void>;
+  createBackup: (reason?: string) => Promise<void>;
+  listBackups: () => Promise<BackupMeta[]>;
+  restoreBackup: (id: string) => Promise<boolean>;
+  exportSave: () => string | null;
+  importSave: (text: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  suspendSaving: (reason: string) => void;
+  clearAllSaves: () => Promise<void>;
   pushNote: (kind: GameNote["kind"], text: string) => void;
   dismissNote: (id: string) => void;
-  resetToNewGame: () => void;
+  resetToNewGame: () => Promise<void>;
 }
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
+// Non-serializable session objects live outside the reactive state.
+let manager: SaveManager | null = null;
+let unbindLifecycle: (() => void) | null = null;
+let session: PreparedSession | null = null;
+let backups: BackupStore | null = null;
 
-export const useGame = create<GameState>((set, get) => ({
-  engine: null,
-  tick: 0,
-  ready: false,
-  backend: "local",
-  userKey: "local",
-  username: "operator",
-  slot: 0,
-  supabase: null,
-  saving: false,
-  notes: [],
+export function getBackupStore(): BackupStore {
+  if (!backups) backups = browserBackupStore();
+  return backups;
+}
 
-  boot: (opts) => {
-    const engine = new GameEngine(opts.save);
-    // keep settings/username in sync
-    engine.player.username = opts.username || engine.player.username;
-    set({
-      engine,
-      ready: true,
-      backend: opts.backend,
-      userKey: opts.userKey,
-      username: opts.username,
-      email: opts.email,
-      slot: opts.slot ?? 0,
-      supabase: opts.supabase ?? null,
-      revision: opts.revision,
-      tick: get().tick + 1,
-    });
-  },
+const EXPORT_FORMAT = "blacknet-save";
 
-  run: (line) => {
-    const engine = get().engine;
-    if (!engine) return null;
-    const result = engine.run(line);
-    // surface notifications
-    for (const id of result.completedMissions) {
-      get().pushNote("mission", `Ukończono zlecenie: ${id.toUpperCase()}`);
-    }
-    for (const id of result.newlyAvailable) {
-      get().pushNote("info", `Nowe zlecenie dostępne: ${id.toUpperCase()}`);
-    }
-    if (result.alerted) {
-      get().pushNote("alert", "⚠ Wykryto podejrzaną aktywność! Poziom alarmu rośnie.");
-    }
-    set({ tick: get().tick + 1 });
-    get().scheduleSave();
-    return result;
-  },
+export const useGame = create<GameState>((set, get) => {
+  /** Swap in a new game state without tearing down the save session. */
+  const replaceEngine = (save: SaveGame) => {
+    const engine = new GameEngine(save);
+    engine.player.username = get().username || engine.player.username;
+    set({ engine, tick: get().tick + 1 });
+  };
 
-  mutate: (fn) => {
-    const engine = get().engine;
-    if (!engine) return;
-    fn(engine);
-    engine.player.updatedAt = Date.now();
-    set({ tick: get().tick + 1 });
-    get().scheduleSave();
-  },
+  return {
+    engine: null,
+    tick: 0,
+    ready: false,
+    backend: "local",
+    userKey: "local",
+    username: "operator",
+    slot: 0,
+    saveStatus: null,
+    backupsVersion: 0,
+    notes: [],
 
-  complete: (line) => {
-    const engine = get().engine;
-    return engine ? engine.complete(line) : [];
-  },
+    boot: ({ prepared, userKey, backend, username, email, slot = 0 }) => {
+      manager?.dispose();
+      unbindLifecycle?.();
+      if (session && session !== prepared) session.guard.dispose();
+      session = prepared;
 
-  applySettings: (partial) => {
-    const engine = get().engine;
-    if (!engine) return;
-    engine.player.settings = { ...engine.player.settings, ...partial };
-    set({ tick: get().tick + 1 });
-    get().scheduleSave();
-  },
+      set({ backend, userKey, username, email, slot });
+      replaceEngine(prepared.save);
 
-  scheduleSave: () => {
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      void get().saveNow();
-    }, 1500);
-  },
+      manager = new SaveManager({
+        userKey,
+        name: `${username} — slot ${slot}`,
+        getSave: () => get().engine!.toSave(),
+        journal: prepared.journal,
+        cloud: prepared.cloud,
+        backups: getBackupStore(),
+        initial: {
+          cloudRevision: prepared.cloudRevision,
+          pendingCloud: prepared.pendingCloud,
+          checksum: prepared.checksum,
+        },
+        online: typeof navigator === "undefined" ? true : navigator.onLine,
+        onStatus: (s) => set({ saveStatus: s }),
+        onAdoptRemote: (save) => replaceEngine(save),
+        onNotice: (kind, text) => get().pushNote(kind, text),
+        onBackup: () => set({ backupsVersion: get().backupsVersion + 1 }),
+      });
+      unbindLifecycle = bindLifecycle(manager);
+      set({ ready: true });
 
-  saveNow: async () => {
-    const { engine, backend, userKey, slot, supabase, username, revision } = get();
-    if (!engine) return;
-    set({ saving: true });
-    const save = engine.toSave();
-    const name = `${username} — slot ${slot}`;
-    try {
-      if (backend === "cloud" && supabase) {
-        const res = await saveCloud(supabase, slot, save, name, revision);
-        if (res.ok) set({ revision: res.revision, lastSavedAt: Date.now() });
-        else if (res.conflict) get().pushNote("alert", "Konflikt zapisu w chmurze — wczytaj ponownie.");
-      } else {
-        const meta: SaveSlotMeta = saveLocal(userKey, slot, save, name);
-        set({ revision: meta.revision, lastSavedAt: meta.updatedAt });
+      for (const n of prepared.notices) get().pushNote(n.kind, n.text);
+      // Write the journal right away (new game / pending sync from last session).
+      void manager.flush({ force: true, reason: "boot" });
+    },
+
+    run: (line) => {
+      const engine = get().engine;
+      if (!engine) return null;
+      const result = engine.run(line);
+      for (const id of result.completedMissions) {
+        get().pushNote("mission", `Ukończono zlecenie: ${id.toUpperCase()}`);
+        void manager?.backup(`misja ${id.toUpperCase()} ukończona`);
       }
-    } catch {
-      /* best-effort autosave */
-    } finally {
-      set({ saving: false });
-    }
-  },
+      for (const id of result.newlyAvailable) {
+        get().pushNote("info", `Nowe zlecenie dostępne: ${id.toUpperCase()}`);
+      }
+      if (result.alerted) {
+        get().pushNote("alert", "⚠ Wykryto podejrzaną aktywność! Poziom alarmu rośnie.");
+      }
+      set({ tick: get().tick + 1 });
+      const milestone = result.completedMissions.length > 0 || result.newlyAvailable.length > 0 || result.sessionChanged;
+      manager?.markDirty(milestone ? "high" : "normal", line);
+      return result;
+    },
 
-  pushNote: (kind, text) => {
-    const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    set({ notes: [...get().notes, { id, kind, text }] });
-    setTimeout(() => get().dismissNote(id), 6000);
-  },
+    mutate: (fn, priority = "high") => {
+      const engine = get().engine;
+      if (!engine) return;
+      fn(engine);
+      engine.player.updatedAt = Date.now();
+      set({ tick: get().tick + 1 });
+      manager?.markDirty(priority);
+    },
 
-  dismissNote: (id) => set({ notes: get().notes.filter((n) => n.id !== id) }),
+    complete: (line) => {
+      const engine = get().engine;
+      return engine ? engine.complete(line) : [];
+    },
 
-  resetToNewGame: () => {
-    const { username } = get();
-    get().boot({
-      save: newSaveGame(username),
-      userKey: get().userKey,
-      backend: get().backend,
-      username,
-      email: get().email,
-      slot: get().slot,
-      supabase: get().supabase,
-    });
-    void get().saveNow();
-  },
-}));
+    applySettings: (partial) => {
+      const engine = get().engine;
+      if (!engine) return;
+      engine.player.settings = { ...engine.player.settings, ...partial };
+      set({ tick: get().tick + 1 });
+      manager?.markDirty("normal");
+    },
+
+    saveNow: async () => {
+      await manager?.flush({ force: true, reason: "manual" });
+    },
+
+    createBackup: async (reason = "ręczna") => {
+      await manager?.backup(reason);
+    },
+
+    listBackups: () => getBackupStore().list(get().userKey),
+
+    restoreBackup: async (id) => {
+      const save = await getBackupStore().load(id);
+      if (!save) {
+        get().pushNote("alert", "Kopia jest uszkodzona lub niedostępna.");
+        return false;
+      }
+      await manager?.backup("przed przywróceniem kopii");
+      replaceEngine(save);
+      manager?.markDirty("high", "restore");
+      get().pushNote("info", "Przywrócono kopię zapasową.");
+      return true;
+    },
+
+    exportSave: () => {
+      const engine = get().engine;
+      if (!engine) return null;
+      const save = engine.toSave();
+      return JSON.stringify({
+        format: EXPORT_FORMAT,
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        checksum: sha256(JSON.stringify(save)),
+        save,
+      });
+    },
+
+    importSave: async (text) => {
+      let parsed: { format?: string; checksum?: string; save?: unknown };
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        return { ok: false, error: "To nie jest plik JSON." };
+      }
+      if (parsed.format !== EXPORT_FORMAT || !parsed.save) {
+        return { ok: false, error: "To nie jest plik zapisu BLACKNET." };
+      }
+      if (parsed.checksum && parsed.checksum !== sha256(JSON.stringify(parsed.save))) {
+        return { ok: false, error: "Plik zapisu jest uszkodzony (zła suma kontrolna)." };
+      }
+      if (!validateSave(parsed.save)) return { ok: false, error: "Plik ma nieprawidłową strukturę." };
+      await manager?.backup("przed importem pliku");
+      replaceEngine(parsed.save);
+      manager?.markDirty("high", "import");
+      get().pushNote("info", "Zaimportowano zapis z pliku.");
+      return { ok: true };
+    },
+
+    suspendSaving: (reason) => {
+      manager?.suspend(reason);
+    },
+
+    clearAllSaves: async () => {
+      manager?.dispose();
+      unbindLifecycle?.();
+      manager = null;
+      session?.journal.clear();
+      await getBackupStore().clear(get().userKey).catch(() => undefined);
+    },
+
+    pushNote: (kind, text) => {
+      const id = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      set({ notes: [...get().notes, { id, kind, text }] });
+      setTimeout(() => get().dismissNote(id), 6000);
+    },
+
+    dismissNote: (id) => set({ notes: get().notes.filter((n) => n.id !== id) }),
+
+    resetToNewGame: async () => {
+      await manager?.backup("przed nową grą");
+      replaceEngine(newSaveGame(get().username));
+      manager?.markDirty("high", "reset");
+    },
+  };
+});

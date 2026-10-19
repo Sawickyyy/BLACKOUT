@@ -71,3 +71,44 @@ test("networking command discovers a host in the network panel", async ({ page }
   await page.getByRole("button", { name: "Sieć", exact: true }).click();
   await expect(page.locator("text=www.aurora.example").first()).toBeVisible({ timeout: 10_000 });
 });
+
+test("autosave: mission creates a backup, a second tab takes over safely", async ({ page, context }) => {
+  await page.goto("/");
+  await page.getByPlaceholder("nazwa użytkownika").fill("e2e_save");
+  await page.getByRole("button", { name: /Rozpocznij grę/i }).click();
+  await expect(page.locator(".xterm")).toBeVisible();
+  for (const l of ["cat README.txt", "whoami", "help", "touch pierwszy.txt"]) await typeLine(page, l);
+
+  // Milestone saves immediately — no debounce wait needed.
+  await expect(page.locator("[data-save-state='saved']")).toBeVisible();
+
+  // A backup of the completed mission lands in IndexedDB.
+  await page.locator("aside").getByRole("button", { name: "Ustaw." }).click();
+  await expect(page.getByTestId("backup-list")).toContainText("misja M01 ukończona");
+
+  // Open the same save in a second tab: the first one steps back.
+  const second = await context.newPage();
+  await second.goto("/");
+  await expect(second.locator(".xterm")).toBeVisible();
+  await expect(page.getByTestId("tab-takeover")).toBeVisible();
+  // The new tab starts from the freshest state (mission already done).
+  await second.locator("aside").getByRole("button", { name: "Zlecenia" }).click();
+  await expect(second.locator("div").filter({ hasText: "Rozruch systemu" }).filter({ hasText: "ukończona" }).first()).toBeVisible();
+});
+
+test("autosave: progress survives closing the tab right after a command", async ({ page }) => {
+  await page.goto("/");
+  await page.getByPlaceholder("nazwa użytkownika").fill("e2e_pagehide");
+  await page.getByRole("button", { name: /Rozpocznij grę/i }).click();
+  await expect(page.locator(".xterm")).toBeVisible();
+  await typeLine(page, "echo ostatnia-komenda > /home/operator/dowod.txt");
+  // Leave immediately (no waiting for the debounce) — pagehide must flush.
+  await page.goto("about:blank");
+  await page.goto("/");
+  await expect(page.locator(".xterm")).toBeVisible();
+  await typeLine(page, "cat dowod.txt > /home/operator/kopia.txt");
+  const saved = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("blacknet:save:local:e2e_pagehide:0") || "{}").data ?? "",
+  );
+  expect(saved).toContain("ostatnia-komenda");
+});

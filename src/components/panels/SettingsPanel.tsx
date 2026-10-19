@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
-import { deleteLocal } from "@/lib/persistence";
 import { useGame } from "@/store/gameStore";
+import AutosaveSection from "./AutosaveSection";
 
 export default function SettingsPanel() {
   const engine = useGame((s) => s.engine);
@@ -11,7 +11,7 @@ export default function SettingsPanel() {
   const resetToNewGame = useGame((s) => s.resetToNewGame);
   const saveNow = useGame((s) => s.saveNow);
   const backend = useGame((s) => s.backend);
-  const userKey = useGame((s) => s.userKey);
+  const clearAllSaves = useGame((s) => s.clearAllSaves);
   const slot = useGame((s) => s.slot);
   useGame((s) => s.tick);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -39,9 +39,9 @@ export default function SettingsPanel() {
       // requires a privileged server function; see DEPLOYMENT.md.
       await supabase.from("saves").delete().neq("slot", -1);
       await supabase.auth.signOut();
-    } else {
-      for (let i = 0; i < 10; i++) deleteLocal(userKey, i);
     }
+    // Journal (+ its backup slot) and all IndexedDB backups for this player.
+    await clearAllSaves();
     try {
       window.localStorage.removeItem("blacknet:last");
     } catch {
@@ -104,25 +104,24 @@ export default function SettingsPanel() {
             ({backend === "cloud" ? "chmura" : "lokalnie"}, slot {slot})
           </span>
         </div>
-        <button className="btn mb-2 w-full py-1" onClick={() => void saveNow()}>
-          Zapisz teraz
-        </button>
         <button className="btn w-full py-1" onClick={logout}>
           {backend === "cloud" ? "Wyloguj" : "Zakończ sesję lokalną"}
         </button>
       </div>
 
+      <AutosaveSection />
+
       <div className="border-t border-line pt-3">
         {!confirmReset ? (
           <button className="btn w-full py-1 text-warn" onClick={() => setConfirmReset(true)}>
-            Nowa gra (reset postępu)
+            Nowa gra (obecna trafi do kopii)
           </button>
         ) : (
           <div className="flex gap-2">
             <button
               className="btn flex-1 py-1 text-danger"
               onClick={() => {
-                resetToNewGame();
+                void resetToNewGame();
                 setConfirmReset(false);
               }}
             >

@@ -1,13 +1,11 @@
 "use client";
 
 import { useGame } from "@/store/gameStore";
+import SaveIndicator from "./SaveIndicator";
 
 export default function StatusBar() {
   const engine = useGame((s) => s.engine);
   useGame((s) => s.tick); // re-render on state change
-  const saving = useGame((s) => s.saving);
-  const lastSavedAt = useGame((s) => s.lastSavedAt);
-  const backend = useGame((s) => s.backend);
   if (!engine) return null;
 
   const p = engine.player;
@@ -33,9 +31,7 @@ export default function StatusBar() {
           <div className={`h-full ${heatColor} transition-all`} style={{ width: `${heat}%` }} />
         </div>
       </div>
-      <span className="text-[10px] text-muted" title={backend === "cloud" ? "Zapis w chmurze" : "Zapis lokalny"}>
-        {saving ? "zapisywanie…" : lastSavedAt ? "zapisano ✓" : backend === "cloud" ? "☁" : "💾"}
-      </span>
+      <SaveIndicator />
     </div>
   );
 }

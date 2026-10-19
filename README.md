@@ -22,6 +22,7 @@ cyberbezpieczeństwa, zdobywasz nagrody i wracasz później z zachowanym postęp
 - [Jak grać](#jak-grać)
 - [Zaimplementowane polecenia](#zaimplementowane-polecenia)
 - [Czego celowo NIE zaimplementowano](#czego-celowo-nie-zaimplementowano)
+- [Autozapis](#autozapis)
 - [Model bezpieczeństwa i zaufania](#model-bezpieczeństwa-i-zaufania)
 - [Wdrożenie](#wdrożenie)
 
@@ -172,6 +173,26 @@ Aby nie wprowadzać w błąd — BLACKNET **nie** jest pełną powłoką POSIX. 
 
 Uwierzytelnianie `ssh` opiera się na posiadanych poświadczeniach (zdobytych w
 grze) lub fladze `--password`, a nie na interaktywnym pytaniu o hasło.
+
+## Autozapis
+
+Postęp zapisuje się sam — gracz nigdy nie musi o tym myśleć (`src/lib/autosave/`).
+
+- **Dziennik lokalny** (synchronicznie, `localStorage`) z kopią rezerwową i sumą
+  kontrolną SHA-256; uszkodzony zapis jest wykrywany i zastępowany poprzednim.
+- **Wyzwalacze:** debounce 1,2 s z limitem 8 s przy ciągłej grze; natychmiast po
+  ukończeniu misji, zakupie, przejściu na inny host; zabezpieczenie co 30 s;
+  synchronicznie przy schowaniu/zamknięciu karty (`visibilitychange`,
+  `pagehide`, `freeze`) — kluczowe na iOS, który zabija karty w tle.
+  Zapis jest pomijany, gdy treść się nie zmieniła.
+- **Chmura offline-first:** kolejka, limit częstotliwości (8 s), ponawianie z
+  wykładniczym odstępem (2 s → 60 s), wznowienie po zdarzeniu `online`.
+- **Konflikty jak w Gicie:** decydują numery rewizji, a nie zegary urządzeń.
+  Przy rozbieżności wygrywa zapis z większym postępem; przegrany trafia do kopii.
+- **Kopie zapasowe** w IndexedDB, kompresowane gzip (~8×), ostatnie 10:
+  po każdej misji, co 10 min, przed konfliktem, przywróceniem, importem i nową grą.
+  Przywracanie, eksport i import pliku w Ustawieniach.
+- **Wiele kart:** nowa karta przejmuje grę, stara zapisuje stan i się wstrzymuje.
 
 ## Model bezpieczeństwa i zaufania
 

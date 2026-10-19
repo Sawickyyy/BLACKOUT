@@ -13,6 +13,7 @@ import FilesPanel from "./panels/FilesPanel";
 import BrowserPanel from "./panels/BrowserPanel";
 import SettingsPanel from "./panels/SettingsPanel";
 import { focusTerminal } from "./terminalBridge";
+import { useGame } from "@/store/gameStore";
 
 type View = "terminal" | "missions" | "wallet" | "net" | "files" | "browser" | "settings";
 
@@ -48,6 +49,8 @@ function Panel({ view }: { view: View }) {
 export default function GameShell() {
   const [view, setView] = useState<View>("terminal");
   const [deskTab, setDeskTab] = useState<View>("missions");
+  const suspended = useGame((s) => s.saveStatus?.state === "suspended");
+  const suspendedReason = useGame((s) => s.saveStatus?.suspendedReason);
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-bg">
@@ -55,6 +58,24 @@ export default function GameShell() {
       <div className="safe-t" />
       <StatusBar />
       <Notifications />
+
+      {suspended && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-bg/90 p-6 backdrop-blur-sm"
+          data-testid="tab-takeover"
+        >
+          <div className="surface max-w-sm rounded-lg p-5 text-center text-sm">
+            <p className="mb-2 font-bold text-accent">Sesja wstrzymana</p>
+            <p className="mb-4 text-xs text-muted">
+              {suspendedReason} Twój postęp został zapisany. Ta karta nie zapisuje już zmian, żeby nie nadpisać
+              gry w drugiej karcie.
+            </p>
+            <button className="btn btn-primary w-full" onClick={() => window.location.reload()}>
+              Graj tutaj
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="relative flex min-h-0 flex-1">
         {/* Terminal — always mounted to preserve xterm state. */}

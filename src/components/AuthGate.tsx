@@ -3,17 +3,17 @@
 import { useEffect, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { loadCloud, loadLocal } from "@/lib/persistence";
-import { newSaveGame } from "@/engine/world/seed";
-import { useGame } from "@/store/gameStore";
+import { prepareSession } from "@/lib/autosave/session";
+import { getBackupStore, useGame } from "@/store/gameStore";
 import GameShell from "./GameShell";
 
 type Mode = "login" | "register";
 
+const TAKEN_OVER = "Gra została otwarta w innej karcie lub oknie.";
+
 export default function AuthGate() {
   const ready = useGame((s) => s.ready);
   const boot = useGame((s) => s.boot);
-  const saveNow = useGame((s) => s.saveNow);
 
   const [checking, setChecking] = useState(true);
   const [mode, setMode] = useState<Mode>("login");
@@ -47,7 +47,7 @@ export default function AuthGate() {
       }
       try {
         const last = window.localStorage.getItem("blacknet:last");
-        if (!cancelled && last) startLocal(last);
+        if (!cancelled && last) await startLocal(last);
       } catch {
         /* storage blocked */
       }
@@ -64,33 +64,36 @@ export default function AuthGate() {
     if (!supabase) return;
     const uname =
       (user.user_metadata?.username as string) || (user.email ? user.email.split("@")[0]! : "operator");
-    const loaded = await loadCloud(supabase, 0);
-    const save = loaded ? loaded.save : newSaveGame(uname);
-    boot({
-      save,
+    const prepared = await prepareSession({
       userKey: user.id,
-      backend: "cloud",
       username: uname,
-      email: user.email,
       slot: 0,
+      name: `${uname} — slot 0`,
       supabase,
-      revision: loaded?.meta.revision,
+      backups: getBackupStore(),
+      onSuperseded: () => useGame.getState().suspendSaving(TAKEN_OVER),
     });
-    if (!loaded) await saveNow();
+    boot({ prepared, userKey: user.id, backend: "cloud", username: uname, email: user.email, slot: 0 });
   }
 
-  function startLocal(name: string) {
+  async function startLocal(name: string) {
     const clean = name.trim() || "operator";
     const key = "local:" + clean;
-    const loaded = loadLocal(key, 0);
-    const save = loaded ? loaded.save : newSaveGame(clean);
-    boot({ save, userKey: key, backend: "local", username: clean, slot: 0 });
+    const prepared = await prepareSession({
+      userKey: key,
+      username: clean,
+      slot: 0,
+      name: `${clean} — slot 0`,
+      supabase: null,
+      backups: getBackupStore(),
+      onSuperseded: () => useGame.getState().suspendSaving(TAKEN_OVER),
+    });
+    boot({ prepared, userKey: key, backend: "local", username: clean, slot: 0 });
     try {
       window.localStorage.setItem("blacknet:last", clean);
     } catch {
       /* storage blocked */
     }
-    if (!loaded) void saveNow();
   }
 
   async function submit(e: React.FormEvent) {
@@ -98,7 +101,7 @@ export default function AuthGate() {
     setMsg(null);
     const supabase = getSupabaseBrowser();
     if (!supabase) {
-      startLocal(username || email);
+      await startLocal(username || email);
       return;
     }
     setBusy(true);
@@ -238,7 +241,7 @@ export default function AuthGate() {
                 lub
                 <div className="h-px flex-1 bg-line" />
               </div>
-              <button className="btn w-full py-1.5" onClick={() => startLocal(username || "operator")}>
+              <button className="btn w-full py-1.5" onClick={() => void startLocal(username || "operator")}>
                 Graj lokalnie (bez konta)
               </button>
             </>
