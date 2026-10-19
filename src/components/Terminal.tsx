@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import { useGame } from "@/store/gameStore";
 import { playSound } from "@/os/sound";
 import { registerTerminal } from "./terminalBridge";
+import { visibleWidth, wrapText } from "./termWrap";
 
 // xterm-based terminal with a full line editor: history, cursor movement,
 // tab-completion, Ctrl-C / Ctrl-L, and paste. The engine runs synchronously
@@ -94,8 +95,13 @@ export default function Terminal() {
     let historyIdx = engine.player.terminalHistory.length;
     let savedDraft = "";
     let prompt = engine.prompt();
+    // Rows between the start of the prompt and where the cursor currently
+    // sits — the edit line may wrap over several rows on a narrow screen.
+    let curRow = 0;
+    let lastCols = 0;
 
-    const normalize = (s: string) => s.replace(/\n/g, "\r\n");
+    const cols = () => Math.max(1, term?.cols ?? 80);
+    const normalize = (s: string) => wrapText(s, cols()).replace(/\n/g, "\r\n");
 
     // Fit to the container and expose the width to the shell as $COLUMNS,
     // like a real terminal, so commands can lay out output for phones.
@@ -105,19 +111,48 @@ export default function Terminal() {
       } catch {
         /* layout not ready */
       }
-      if (term) engine.player.session.env.COLUMNS = String(term.cols);
+      if (!term) return;
+      engine.player.session.env.COLUMNS = String(term.cols);
+      // xterm reflows the wrapped edit line on a width change (e.g. rotating
+      // the phone); recompute where the cursor now sits within it.
+      if (term.cols !== lastCols) {
+        lastCols = term.cols;
+        curRow = Math.floor((visibleWidth(prompt) + visibleWidth(input.slice(0, cursor))) / cols());
+      }
+    };
+
+    /**
+     * Redraw prompt + input from the prompt's first row, then place the cursor.
+     * Unlike a plain "\r + clear line", this works when the line wraps.
+     */
+    const refreshLine = () => {
+      const c = cols();
+      const plen = visibleWidth(prompt);
+      if (curRow > 0) term!.write(`\x1b[${curRow}A`);
+      term!.write("\r\x1b[J" + colorPrompt(prompt) + input);
+      const total = plen + visibleWidth(input);
+      // At an exact multiple of the width xterm holds the cursor in a
+      // "pending wrap" state; force it onto the next row so maths stays exact.
+      if (total > 0 && total % c === 0) term!.write(" \r\x1b[K");
+      const endRow = Math.floor(total / c);
+      const target = plen + visibleWidth(input.slice(0, cursor));
+      const row = Math.floor(target / c);
+      const col = target % c;
+      if (endRow > row) term!.write(`\x1b[${endRow - row}A`);
+      term!.write("\r" + (col > 0 ? `\x1b[${col}C` : ""));
+      curRow = row;
+    };
+
+    /** Move the cursor to the end of the edit line (before printing below it). */
+    const toLineEnd = () => {
+      cursor = input.length;
+      refreshLine();
     };
 
     const writePrompt = () => {
       prompt = engine.prompt();
-      term!.write(colorPrompt(prompt));
-    };
-
-    const refreshLine = () => {
-      term!.write("\r\x1b[K");
-      term!.write(colorPrompt(prompt) + input);
-      const back = input.length - cursor;
-      if (back > 0) term!.write(`\x1b[${back}D`);
+      curRow = 0;
+      refreshLine();
     };
 
     const printOutput = (res: { stdout: string; stderr: string } | null) => {
@@ -129,6 +164,7 @@ export default function Terminal() {
     };
 
     const commit = () => {
+      toLineEnd();
       term!.write("\r\n");
       const line = input;
       input = "";
@@ -191,7 +227,11 @@ export default function Terminal() {
         cursor = input.length;
       }
       if (cands.length > 1) {
-        term!.write("\r\n" + cands.join("  ") + "\r\n");
+        const at = cursor;
+        toLineEnd();
+        term!.write("\r\n" + normalize(cands.join("  ")) + "\r\n");
+        curRow = 0;
+        cursor = at;
       }
       refreshLine();
     };
@@ -200,6 +240,7 @@ export default function Terminal() {
       if (ch === "\r" || ch === "\n") return commit();
       if (ch === "\x7f" || ch === "\b") return backspace();
       if (ch === "\x03") {
+        toLineEnd();
         term!.write("^C\r\n");
         input = "";
         cursor = 0;
@@ -208,7 +249,7 @@ export default function Terminal() {
       }
       if (ch === "\x0c") {
         term!.write("\x1b[2J\x1b[H");
-        writePrompt();
+        curRow = 0;
         refreshLine();
         return;
       }
@@ -237,13 +278,13 @@ export default function Terminal() {
         case "\x1b[C":
           if (cursor < input.length) {
             cursor++;
-            term!.write("\x1b[C");
+            refreshLine();
           }
           return;
         case "\x1b[D":
           if (cursor > 0) {
             cursor--;
-            term!.write("\x1b[D");
+            refreshLine();
           }
           return;
         case "\x1b[H":
@@ -282,9 +323,12 @@ export default function Terminal() {
       termRef.current = term;
       refitRef.current = refit;
       refit();
-      term.writeln("\x1b[1;32mBLACKNET OS\x1b[0m \x1b[90m· terminal operatora · sieć fikcyjna, odizolowana\x1b[0m");
-      term.writeln("\x1b[90mWpisz\x1b[0m help \x1b[90maby zobaczyć polecenia,\x1b[0m missions \x1b[90maby zacząć.\x1b[0m");
-      term.writeln("");
+      term.write(
+        normalize(
+          "\x1b[1;32mBLACKNET OS\x1b[0m \x1b[90m· terminal operatora · sieć fikcyjna, odizolowana\x1b[0m\n" +
+            "\x1b[90mWpisz\x1b[0m help \x1b[90maby zobaczyć polecenia,\x1b[0m missions \x1b[90maby zacząć.\x1b[0m\n\n",
+        ),
+      );
       writePrompt();
       term.onData(onData);
       term.focus();
