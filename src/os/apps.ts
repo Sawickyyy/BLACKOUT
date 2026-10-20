@@ -7,6 +7,7 @@ import {
   FolderTree,
   Globe2,
   Network,
+  NotebookPen,
   Settings2,
   SquareTerminal,
   Video,
@@ -23,6 +24,7 @@ export type AppId =
   | "browser"
   | "cctv"
   | "wifi"
+  | "notebook"
   | "editor"
   | "wallet"
   | "settings";
@@ -111,6 +113,16 @@ export const APPS: Record<AppId, AppMeta> = {
     size: { w: 820, h: 580 },
     min: { w: 420, h: 340 },
   },
+  notebook: {
+    id: "notebook",
+    title: "Notatnik",
+    short: "Notatnik",
+    description: "Znaleziska, konta i Twoje notatki",
+    icon: NotebookPen,
+    tint: "255 206 120",
+    size: { w: 560, h: 620 },
+    min: { w: 360, h: 360 },
+  },
   editor: {
     id: "editor",
     title: "Edytor",
@@ -152,6 +164,7 @@ export const APP_IDS: AppId[] = [
   "browser",
   "cctv",
   "wifi",
+  "notebook",
   "wallet",
   "settings",
 ];

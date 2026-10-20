@@ -125,6 +125,13 @@ function auroraWeb(): Host {
       deploy: {
         "deploy.log": "ostatnie wdrożenie: OK\n",
         ".ssh": { "authorized_keys": "ssh-ed25519 AAAA... deploy@ci\n" },
+        ".bash_history":
+          "cd /var/www\n" +
+          "sudo -l\n" +
+          "scp backup/db.sql backup@198.51.100.10:/tmp/\n" +
+          "curl -s http://www.aurora.example/backup/deploy.yml\n" +
+          "mysql -u root -p   # haslo w /backup/deploy.yml\n" +
+          "history -c\n",
       },
     },
     logs: [

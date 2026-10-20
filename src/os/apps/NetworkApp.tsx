@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Crosshair, Globe, Lock, Radar, Server, ShieldCheck, Unlock, Wifi } from "lucide-react";
+import { Crosshair, Globe, Lock, Radar, Server, ShieldAlert, ShieldCheck, Unlock, Wifi } from "lucide-react";
 import type { Host } from "@/engine/types";
+import { advisoriesFor, SEVERITY_LABEL } from "@/engine/vulns";
 import { focusTerminal, sendToTerminal } from "@/components/terminalBridge";
 import { useGame } from "@/store/gameStore";
 import { GameEngine } from "@/engine/game";
@@ -55,6 +56,7 @@ function HostDetail({ host, access, onClose }: { host: Host; access: string[]; o
   const openUrl = useOS((s) => s.openUrl);
   const services = engine.observedServices(host.id);
   const web = (host.services.find((s) => s.kind === "http") ?? host.services.find((s) => s.kind === "https")) && services?.some((s) => s.port === 80 || s.port === 443 || s.port === 8080);
+  const advisories = (services ?? []).flatMap((s) => advisoriesFor(s.version));
   const term = (cmd: string) => {
     useOS.getState().launch("terminal");
     setTimeout(() => {
@@ -122,6 +124,24 @@ function HostDetail({ host, access, onClose }: { host: Host; access: string[]; o
           </ul>
         )}
       </div>
+
+      {advisories.length > 0 && (
+        <div>
+          <p className="os-label mb-1.5 flex items-center gap-1.5">
+            <ShieldAlert size={12} className="text-accent2" /> Biuletyn podatności ({advisories.length})
+          </p>
+          <ul className="space-y-1">
+            {advisories.map((a) => (
+              <li key={a.id} className="rounded-lg bg-white/[0.03] px-2.5 py-1.5 text-2xs">
+                <span className="font-mono text-accent2">{a.id}</span>{" "}
+                <span className="text-fg">{a.title}</span>{" "}
+                <span className="text-muted">· {SEVERITY_LABEL[a.severity]}</span>
+                <p className="mt-0.5 text-muted">{a.note}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <OSButton size="sm" variant="secondary" icon={<Radar size={14} />} onClick={() => term(`nmap -sV ${host.hostname}`)}>

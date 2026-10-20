@@ -285,6 +285,81 @@ const jobs: CommandSpec = {
   run: () => ok(""),
 };
 
+/** `last` — reconstruct recent logins from the host's auth.log. */
+const last: CommandSpec = {
+  name: "last",
+  summary: "pokaż ostatnie logowania (z auth.log)",
+  usage: "last [-n liczba]",
+  run: (ctx, io) => {
+    const { values } = parseArgs(io.argv, { valueFlags: ["n"] });
+    const limit = values.n ? parseInt(values.n, 10) || 10 : 10;
+    let log = "";
+    try {
+      log = ctx.vfs.readFile("/var/log/auth.log", ctx.principal);
+    } catch {
+      return err("last: nie można odczytać /var/log/wtmp");
+    }
+    const rows = log
+      .split("\n")
+      .filter((l) => /Accepted password for/.test(l))
+      .map((l) => {
+        const m = /Accepted password for (\S+) from (\S+)/.exec(l);
+        const ts = l.slice(0, 19).replace("T", " ");
+        return m ? `${m[1]!.padEnd(10)} ${m[2]!.padEnd(16)} ${ts}` : null;
+      })
+      .filter((x): x is string => !!x);
+    const tail = rows.slice(-limit).reverse();
+    return ok((tail.length ? tail.join("\n") : "brak zapisanych logowań") + "\n");
+  },
+};
+
+/** `crontab -l` — list scheduled jobs from /etc/cron.d + the user's crontab. */
+const crontab: CommandSpec = {
+  name: "crontab",
+  summary: "pokaż zaplanowane zadania (cron)",
+  usage: "crontab -l",
+  run: (ctx, io) => {
+    if (!io.argv.includes("-l")) return ok("Użycie: crontab -l\n");
+    const out: string[] = [];
+    try {
+      const dir = ctx.vfs.readdir("/etc/cron.d", ctx.principal);
+      for (const name of dir) {
+        try {
+          const body = ctx.vfs.readFile(`/etc/cron.d/${name}`, ctx.principal).trim();
+          if (body) out.push(`# /etc/cron.d/${name}`, body);
+        } catch {
+          /* unreadable entry */
+        }
+      }
+    } catch {
+      /* no cron.d */
+    }
+    return ok((out.length ? out.join("\n") : "brak zaplanowanych zadań") + "\n");
+  },
+};
+
+/** `systemctl status` — a believable view of running services from open ports. */
+const systemctl: CommandSpec = {
+  name: "systemctl",
+  summary: "stan usług systemowych (symulowany)",
+  usage: "systemctl status [usługa]",
+  run: (ctx, io) => {
+    const { positionals } = parseArgs(io.argv);
+    if (positionals[0] !== "status") return ok("Użycie: systemctl status [usługa]\n");
+    const MAP: Record<string, string> = { ssh: "ssh", http: "nginx", https: "nginx", ftp: "vsftpd", dns: "named", mysql: "mysql", postgres: "postgresql" };
+    const units = ctx.host.services
+      .filter((s) => s.open)
+      .map((s) => ({ unit: `${MAP[s.kind] ?? s.kind}.service`, banner: s.banner, port: s.port }));
+    const filter = positionals[1];
+    const shown = filter ? units.filter((u) => u.unit.includes(filter)) : units;
+    if (!shown.length) return ok("Brak pasujących usług.\n");
+    const lines = shown.map(
+      (u) => `● ${u.unit} — ${u.banner}\n   Active: active (running)   Nasłuch: :${u.port}`,
+    );
+    return ok(lines.join("\n") + "\n");
+  },
+};
+
 export const systemCommands: CommandSpec[] = [
   whoami,
   id,
@@ -304,4 +379,7 @@ export const systemCommands: CommandSpec[] = [
   top,
   kill,
   jobs,
+  last,
+  crontab,
+  systemctl,
 ];

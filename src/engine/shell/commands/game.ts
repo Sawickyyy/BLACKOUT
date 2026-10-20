@@ -5,9 +5,11 @@
 import { bankDeposit, bankWithdraw, buyItem, STORE } from "../../economy";
 import { MISSIONS } from "../../missions/defs";
 import { revealMissionHint } from "../../missions/engine";
-import type { MissionStatus } from "../../types";
+import { addManualNote } from "../../notebook";
+import type { Host, MissionStatus } from "../../types";
+import { advisoriesFor, SEVERITY_LABEL } from "../../vulns";
 import { parseArgs } from "./args";
-import { err, ok, type CommandSpec } from "../context";
+import { err, ok, type CommandSpec, type ShellContext } from "../context";
 
 const STATUS_LABEL: Record<MissionStatus, string> = {
   locked: "🔒 zablokowana",
@@ -286,4 +288,58 @@ const cameras: CommandSpec = {
   },
 };
 
-export const gameCommands: CommandSpec[] = [missions, mission, wallet, store, buy, bank, hosts, hint, tutorial, cameras];
+const SEV_MARK: Record<string, string> = { low: "·", medium: "▲", high: "⚠", critical: "⛔" };
+
+function hostAdvisories(ctx: ShellContext, host: Host): string[] {
+  const out: string[] = [];
+  for (const s of host.services) {
+    if (!s.open || !s.product) continue;
+    const banner = `${s.product} ${s.version ?? ""}`.trim();
+    for (const a of advisoriesFor(banner)) {
+      out.push(`  ${SEV_MARK[a.severity]} [${a.id}] ${a.title}  (${SEVERITY_LABEL[a.severity]})`);
+      out.push(`      port ${s.port} · ${banner} — ${a.note}`);
+    }
+  }
+  return out;
+}
+
+const vulns: CommandSpec = {
+  name: "vulns",
+  summary: "biuletyn podatności dla odkrytych usług (fikcyjny)",
+  usage: "vulns [host]",
+  run: (ctx, io) => {
+    const arg = io.argv[0];
+    const targets: Host[] = arg
+      ? [ctx.net.target(arg)].filter((h): h is Host => !!h)
+      : ctx.player.discovered.map((id) => ctx.world.hosts[id]).filter((h): h is Host => !!h && h.org !== "self");
+    if (arg && targets.length === 0) return err(`Nie znaleziono hosta: ${arg}`);
+    const lines = ["BIULETYN PODATNOŚCI (fikcyjny, edukacyjny)", "═".repeat(42)];
+    let found = 0;
+    for (const host of targets) {
+      const adv = hostAdvisories(ctx, host);
+      if (!adv.length) continue;
+      found += adv.length / 2;
+      lines.push("", `${host.hostname} (${host.ip}):`, ...adv);
+    }
+    if (found === 0) {
+      lines.push("", "Brak wpisów dla odkrytych usług. Zmapuj wersje: `nmap -sV <host>`.");
+    } else {
+      lines.push("", "To wskazówki do dalszego rozpoznania, nie gotowe exploity.");
+    }
+    return ok(lines.join("\n") + "\n");
+  },
+};
+
+const note: CommandSpec = {
+  name: "note",
+  summary: "dopisz notatkę do notatnika operatora",
+  usage: "note <treść>",
+  run: (ctx, io) => {
+    const text = io.argv.join(" ").trim();
+    if (!text) return err("Użycie: note <treść>  (notatka trafi do aplikacji Notatnik)");
+    addManualNote(ctx.player, text);
+    return ok("Zapisano w notatniku operatora.\n");
+  },
+};
+
+export const gameCommands: CommandSpec[] = [missions, mission, wallet, store, buy, bank, hosts, hint, tutorial, cameras, vulns, note];

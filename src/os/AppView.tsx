@@ -13,6 +13,7 @@ const FilesApp = dynamic(() => import("./apps/FilesApp"), { ssr: false, loading 
 const BrowserApp = dynamic(() => import("./apps/BrowserApp"), { ssr: false, loading });
 const CctvApp = dynamic(() => import("./apps/CctvApp"), { ssr: false, loading });
 const WifiApp = dynamic(() => import("./apps/WifiApp"), { ssr: false, loading });
+const NotebookApp = dynamic(() => import("./apps/NotebookApp"), { ssr: false, loading });
 const EditorApp = dynamic(() => import("./apps/EditorApp"), { ssr: false, loading });
 const WalletApp = dynamic(() => import("./apps/WalletApp"), { ssr: false, loading });
 const SettingsApp = dynamic(() => import("./apps/SettingsApp"), { ssr: false, loading });
@@ -32,6 +33,8 @@ export default function AppView({ id, mobile }: { id: Exclude<AppId, "terminal">
       return <CctvApp mobile={mobile} />;
     case "wifi":
       return <WifiApp mobile={mobile} />;
+    case "notebook":
+      return <NotebookApp mobile={mobile} />;
     case "editor":
       return <EditorApp mobile={mobile} />;
     case "wallet":

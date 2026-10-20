@@ -113,6 +113,30 @@ test.describe("BLACKNET OS — gameplay", () => {
     await expect(win.getByText("README.txt")).toBeVisible({ timeout: 8000 });
   });
 
+  test("Notebook auto-collects findings and accepts manual notes", async ({ page }) => {
+    await startGame(page, "e2e_notebook");
+    // Gain a discovery + an account so the notebook has auto entries.
+    for (const l of [
+      "cat README.txt",
+      "whoami",
+      "help",
+      "touch pierwszy.txt",
+      "nslookup aurora.example",
+      "ping -c1 www.aurora.example",
+      "nmap -sV www.aurora.example",
+    ]) {
+      await typeLine(page, l);
+    }
+    await page.locator('[data-dock="notebook"]').click();
+    const win = page.locator('[data-window="notebook"]');
+    // Auto-collected host entry is present.
+    await expect(win.getByText(/www\.aurora\.example/)).toBeVisible({ timeout: 8000 });
+    // Manual note via the UI.
+    await win.getByPlaceholder(/Dodaj notatkę/).fill("sprawdzic /backup");
+    await win.getByRole("button", { name: /Dodaj/ }).click();
+    await expect(win.getByText("sprawdzic /backup")).toBeVisible();
+  });
+
   test("Wi-Fi Lab: scan, strength meter, and joining the weak network", async ({ page }) => {
     await startGame(page, "e2e_wifi");
     await page.locator('[data-dock="wifi"]').click();

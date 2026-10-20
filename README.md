@@ -60,6 +60,15 @@ iPhonie (szczegóły: `docs/REDESIGN.md`).
 - **Wbudowany onboarding** — mini-kurs `tutorial` (potoki, przekierowania,
   zwiad, dostęp), płatne wskazówki `hint` do aktywnego zlecenia oraz kontekstowe
   podpowiedzi po błędach (np. „czy chodziło o `ls`?").
+- **Świat reaguje na gracza** — symulowany administrator po przekroczeniu
+  progu alarmu blokuje adres IP operatora (host zostaje odfiltrowany, logowania
+  odrzucone) i zdejmuje blokadę, gdy czujność opadnie. Każde logowanie i żądanie
+  gracza zostawia realny ślad w logach hosta (auth.log, access.log).
+- **Biuletyn podatności** — fikcyjne, edukacyjne wpisy (prefiks BLACKNET)
+  dopasowane do wersji usług z `nmap -sV`; polecenie `vulns` i podświetlenie w
+  aplikacji „Sieć".
+- **Notatnik operatora** — osobna aplikacja, która automatycznie zbiera odkryte
+  hosty i zdobyte konta, a gracz dopisuje własne notatki (`note` w terminalu).
 - **Systemy wykrywania** — IDS, logi uwierzytelniania, poziom podejrzeń rosnący
   na podstawie realnych akcji (skan jest głośny, czytanie własnego pliku ciche).
 - **Ekonomia** — konto bankowe, transakcje, sklep z narzędziami i sprzętem,
@@ -162,12 +171,12 @@ obsługiwanymi flagami (inne flagi mogą być ignorowane).
 | Kategoria | Polecenia (obsługiwane flagi) |
 |---|---|
 | System plików | `pwd`, `cd`, `ls` (-l -a -h), `mkdir` (-p), `rmdir`, `touch`, `rm` (-r -f), `cp` (-r), `mv`, `cat` (-n), `less`, `head` (-n), `tail` (-n), `find` (-name -type), `grep` (-i -n -v -r), `chmod`, `chown`, `stat`, `file`, `du` (-s -h), `df` (-h) |
-| System | `whoami`, `id`, `uname` (-a -r -s -n -m), `hostname`, `date`, `uptime`, `env`, `export`, `echo` (-n), `printf`, `true`, `false`, `clear`, `history` (-c), `ps` (aux), `top`, `kill` (-9), `jobs` |
+| System | `whoami`, `id`, `uname` (-a -r -s -n -m), `hostname`, `date`, `uptime`, `env`, `export`, `echo` (-n), `printf`, `true`, `false`, `clear`, `history` (-c), `ps` (aux), `top`, `kill` (-9), `jobs`, `last`, `crontab -l`, `systemctl status` |
 | Sieć | `ip` (addr/route), `ifconfig`, `ping` (-c), `traceroute`, `netstat`, `ss`, `nslookup`, `dig`, `curl` (-s -I -o), `wget` (-O), `ssh` (-p --password), `scp`, `sftp` |
 | Bezpieczeństwo | `nmap` (-p -sV), `nc` (-z) |
 | Narzędzia | `man`, `help`, `which`, `whereis`, `wc` (-l -w -c), `sort` (-r -n -u), `uniq` (-c), `cut` (-d -f), `sed` (`s/…/…/[gi]`), `awk` (`{print $n}`, -F), `tar` (-c -x -t -f -z), `gzip`/`gunzip` (-d), `base64` (-d), `sha256sum` |
 | Uprawnienia | `sudo` (-l, -s, `sudo <cmd>`), `su` |
-| Gra | `missions`, `mission`, `wallet`, `store`, `buy`, `bank`, `hosts`, `hint`, `tutorial`, `cameras`, `wifi` |
+| Gra | `missions`, `mission`, `wallet`, `store`, `buy`, `bank`, `hosts`, `hint`, `tutorial`, `cameras`, `wifi`, `vulns`, `note` |
 
 Funkcje powłoki: potoki, przekierowania (`> >> < 2> 2>> &>`), `&&`/`||`/`;`,
 rozwijanie zmiennych (`$VAR`, `${VAR}`, `$?`), cudzysłowy pojedyncze/podwójne,

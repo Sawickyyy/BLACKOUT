@@ -124,6 +124,12 @@ export interface Host {
   reachable?: boolean;
   /** Optional camera subsystem (NVR hosts) viewable in the CCTV app. */
   cctv?: CameraSystem;
+  /**
+   * The simulated administrator has locked the host down after too much noise:
+   * the player's traffic is filtered and logins refused until suspicion cools.
+   * Reversible — cleared once the host's heat drops back down.
+   */
+  lockdown?: boolean;
 }
 
 export interface DnsRecord {
@@ -217,8 +223,20 @@ export interface PlayerState {
   wifiMonitor?: boolean;
   /** SSID of the simulated network the player is currently joined to. */
   wifiConnected?: string;
+  /** Operator notebook: auto-collected findings + the player's own notes. */
+  notebook?: NotebookEntry[];
   createdAt: number;
   updatedAt: number;
+}
+
+/** A line in the operator's notebook. Auto entries come from the engine. */
+export interface NotebookEntry {
+  id: string;
+  ts: number;
+  kind: "host" | "credential" | "flag" | "note";
+  text: string;
+  /** True for entries the engine recorded automatically. */
+  auto?: boolean;
 }
 
 export interface SessionState {

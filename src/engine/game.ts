@@ -5,6 +5,8 @@
 // mission systems. The UI and the persistence layer both talk to this class.
 
 import { applyDetection, decaySuspicion } from "./detection";
+import { recordFootprint, updateDefenders } from "./defense";
+import { syncNotebook } from "./notebook";
 import { VFS, type Principal } from "./fs/vfs";
 import { resolve as resolvePath } from "./fs/path";
 import { MISSIONS } from "./missions/defs";
@@ -27,6 +29,8 @@ export interface RunResult {
   alerted: boolean;
   /** Gentle, context-aware onboarding tips (unknown command, repeated errors). */
   tips: string[];
+  /** Visible actions a simulated defender took this run (lockdown, stand-down). */
+  defenderActions: string[];
 }
 
 /** Levenshtein distance, for "did you mean" command suggestions. */
@@ -58,6 +62,7 @@ export class GameEngine {
   private accAvailable = new Set<string>();
   private accObjectives: { mission: string; objective: string }[] = [];
   private accAlerted = false;
+  private accDefense: string[] = [];
 
   constructor(save: SaveGame) {
     // Graft in any world content added since this save was created, so newer
@@ -149,6 +154,14 @@ export class GameEngine {
     // Detection first (mutates suspicion + host logs).
     const det = applyDetection(this.world, this.player, ev);
     if (det.alerted) this.accAlerted = true;
+    // Leave a footprint in the host's logs, then let defenders react to the
+    // new heat (lock the host down, or stand down as it cools).
+    const host = ev.hostId ? this.world.hosts[ev.hostId] : undefined;
+    if (host) {
+      const fromIp = this.world.hosts[this.player.localHostId]?.ip ?? "10.13.37.2";
+      recordFootprint(host, this.player, fromIp, ev);
+      this.accDefense.push(...updateDefenders(host, this.player, fromIp).actions);
+    }
     // Then missions react to the event.
     const upd = evaluateMissions(this.player, this.world, MISSIONS, ev);
     upd.completed.forEach((c) => this.accCompleted.add(c));
@@ -169,6 +182,7 @@ export class GameEngine {
     this.accAvailable.clear();
     this.accObjectives = [];
     this.accAlerted = false;
+    this.accDefense = [];
 
     this.applyWifiLinkFilter();
     const ctx = this.buildContext();
@@ -182,6 +196,11 @@ export class GameEngine {
     finalUpd.newlyAvailable.forEach((c) => this.accAvailable.add(c));
     this.accObjectives.push(...finalUpd.objectivesAdvanced);
 
+    // Suspicion cools a little with every quiet action, so a locked-down host
+    // eventually stands down during play — then let defenders re-evaluate.
+    this.coolDown();
+    syncNotebook(this.player, this.world);
+
     this.player.updatedAt = Date.now();
 
     return {
@@ -194,7 +213,22 @@ export class GameEngine {
       objectivesAdvanced: this.accObjectives,
       alerted: this.accAlerted,
       tips: this.onboardingTips(trimmed, outcome.code, outcome.stderr),
+      defenderActions: this.accDefense,
     };
+  }
+
+  /** Gentle per-command cooldown + defender stand-down when a host is quiet. */
+  private coolDown(): void {
+    const by = this.player.suspicion.byHost;
+    for (const k of Object.keys(by)) by[k] = Math.max(0, (by[k] ?? 0) * 0.97);
+    const vals = Object.values(by);
+    this.player.suspicion.heat = vals.length
+      ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
+      : 0;
+    const fromIp = this.world.hosts[this.player.localHostId]?.ip ?? "10.13.37.2";
+    for (const host of Object.values(this.world.hosts)) {
+      if (host.lockdown) this.accDefense.push(...updateDefenders(host, this.player, fromIp).actions);
+    }
   }
 
   /**

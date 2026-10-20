@@ -140,6 +140,7 @@ export class Network {
     if (!ip) return { reachable: false, latencyMs: 0, loss: 1, ttl: 0, reason: "nieznana nazwa" };
     const host = this.hostByIp(ip);
     if (!host) return { reachable: false, ip, latencyMs: 0, loss: 1, ttl: 0, reason: "brak trasy" };
+    if (host.lockdown) return { reachable: false, ip, latencyMs: 0, loss: 1, ttl: 0, reason: "filtrowane" };
     // ICMP modeled as port 0; a drop rule hides the host.
     const decision = this.firewallDecision(host, from.ip, 0, "udp");
     if (decision === "drop") {
@@ -184,6 +185,8 @@ export class Network {
 
   /** TCP/UDP connect attempt respecting firewall + service open state. */
   connect(from: Host, target: Host, port: number, proto: "tcp" | "udp" = "tcp"): ConnectResult {
+    // A host in administrator lockdown filters the operator's traffic entirely.
+    if (target.lockdown) return { ok: false, reason: "filtered" };
     const decision = this.firewallDecision(target, from.ip, port, proto);
     if (decision === "drop") return { ok: false, reason: "filtered" };
     if (decision === "reject") return { ok: false, reason: "refused" };
@@ -194,6 +197,7 @@ export class Network {
 
   /** Scan a set of ports on a target. */
   scan(from: Host, target: Host, ports: number[], proto: "tcp" | "udp" = "tcp"): PortResult[] {
+    if (target.lockdown) return ports.map((port) => ({ port, proto, state: "filtered" as const }));
     return ports.map((port) => {
       const decision = this.firewallDecision(target, from.ip, port, proto);
       if (decision === "drop") return { port, proto, state: "filtered" as const };

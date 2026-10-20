@@ -51,6 +51,9 @@ export function migrateSave(save: SaveGame): SaveGame {
   if (!Array.isArray(save.player.cctvViewed)) {
     save.player.cctvViewed = [];
   }
+  if (!Array.isArray(save.player.notebook)) {
+    save.player.notebook = [];
+  }
   if (typeof save.player.tutorialSeen !== "boolean") {
     // Veteran players (any discovered host beyond the two starting ones) have
     // clearly found their feet — don't nag them with the first-run tutorial.

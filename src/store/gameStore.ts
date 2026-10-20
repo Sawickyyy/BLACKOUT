@@ -15,6 +15,7 @@ import { bindLifecycle } from "@/lib/autosave/lifecycle";
 import { SaveManager, type Priority, type SaveStatus } from "@/lib/autosave/manager";
 import { validateSave } from "@/lib/autosave/progress";
 import type { PreparedSession } from "@/lib/autosave/session";
+import { addManualNote, removeNote as removeNoteEngine } from "@/engine/notebook";
 import { playSound } from "@/os/sound";
 
 export type Backend = "cloud" | "local";
@@ -65,6 +66,8 @@ interface GameState {
   revealHint: (ref?: string) => void;
   viewCamera: (hostId: string, feedId: string) => void;
   saveFile: (path: string, content: string) => { ok: true } | { ok: false; error: string };
+  addNote: (text: string) => void;
+  removeNote: (id: string) => void;
   mutate: (fn: (engine: GameEngine) => void, priority?: Priority) => void;
   complete: (line: string) => string[];
   applySettings: (partial: Partial<GameSettings>) => void;
@@ -183,6 +186,7 @@ export const useGame = create<GameState>((set, get) => {
         playSound("alarm");
       }
       for (const tip of result.tips) get().pushNote("info", tip);
+      for (const act of result.defenderActions) get().pushNote(act.startsWith("✅") ? "info" : "alert", act);
       set({ tick: get().tick + 1, lastExit: { code: result.code, at: Date.now() } });
       const milestone = result.completedMissions.length > 0 || result.newlyAvailable.length > 0 || result.sessionChanged;
       manager?.markDirty(milestone ? "high" : "normal", line);
@@ -240,6 +244,22 @@ export const useGame = create<GameState>((set, get) => {
       set({ tick: get().tick + 1 });
       manager?.markDirty("high", `edit ${path}`);
       return { ok: true };
+    },
+
+    addNote: (text) => {
+      const engine = get().engine;
+      if (!engine || !text.trim()) return;
+      addManualNote(engine.player, text.trim());
+      set({ tick: get().tick + 1 });
+      manager?.markDirty("normal");
+    },
+
+    removeNote: (id) => {
+      const engine = get().engine;
+      if (!engine) return;
+      removeNoteEngine(engine.player, id);
+      set({ tick: get().tick + 1 });
+      manager?.markDirty("normal");
     },
 
     mutate: (fn, priority = "high") => {
